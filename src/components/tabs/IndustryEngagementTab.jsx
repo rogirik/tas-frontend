@@ -33,7 +33,7 @@ export default function IndustryEngagementTab({ activeTasId, strategyDetails, se
     
     setStrategyDetails(prev => {
       const newState = { ...prev, industry_engagements: updatedEngagements }
-      fetch(`http://127.0.0.1:8000/tas/${activeTasId}/strategy_details`, { 
+      fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/strategy_details`, { 
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newState) 
       })
       return newState
@@ -67,7 +67,7 @@ export default function IndustryEngagementTab({ activeTasId, strategyDetails, se
 
     setStrategyDetails(prev => {
       const newState = { ...prev, industry_engagements: updatedEngagements }
-      fetch(`http://127.0.0.1:8000/tas/${activeTasId}/strategy_details`, { 
+      fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/strategy_details`, { 
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newState) 
       })
       return newState
@@ -82,7 +82,7 @@ export default function IndustryEngagementTab({ activeTasId, strategyDetails, se
     
     setStrategyDetails(prev => {
       const newState = { ...prev, industry_engagements: updatedEngagements }
-      fetch(`http://127.0.0.1:8000/tas/${activeTasId}/strategy_details`, { 
+      fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/strategy_details`, { 
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newState) 
       })
       return newState

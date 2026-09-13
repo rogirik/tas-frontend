@@ -16,7 +16,7 @@ export default function LogisticsTab({ activeTasId, strategyDetails, setStrategy
 
     setPolishingState(prev => ({ ...prev, [field]: true }))
 
-    fetch(`http://127.0.0.1:8000/tas/${activeTasId}/polish`, {
+    fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/polish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ section_name: field, current_text: currentText })

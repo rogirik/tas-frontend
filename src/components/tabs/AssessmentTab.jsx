@@ -34,7 +34,7 @@ export default function AssessmentTab({ activeTasId, strategyDetails, setStrateg
 
     setIsPolishing(true)
 
-    fetch(`http://127.0.0.1:8000/tas/${activeTasId}/polish`, {
+    fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/polish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ section_name: 'assessment_rationale', current_text: currentText })

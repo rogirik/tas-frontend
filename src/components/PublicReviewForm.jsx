@@ -11,7 +11,7 @@ export default function PublicReviewForm({ tasId, initialEmail }) {
   const [tasName, setTasName] = useState('Training & Assessment Strategy');
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:8000/tas`)
+    fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas`)
       .then(res => res.json())
       .then(data => {
         const doc = data.find(d => d.id == tasId);
@@ -31,7 +31,7 @@ export default function PublicReviewForm({ tasId, initialEmail }) {
       q4_answer: q4
     };
 
-    fetch(`http://127.0.0.1:8000/tas/${tasId}/feedback`, {
+    fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${tasId}/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
