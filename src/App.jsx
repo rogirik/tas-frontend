@@ -14,7 +14,7 @@ import IndustryEngagementTab from './components/tabs/IndustryEngagementTab.jsx'
 import PublicReviewForm from './components/PublicReviewForm.jsx'
 
 function App() {
-  const API_URL = import.meta.env.VITE_API_URL || '${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}'
+  const API_URL = import.meta.env.VITE_API_URL || 'https://tas-backend-production.up.railway.app'
 
   const urlParams = new URLSearchParams(window.location.search);
   const reviewTasId = urlParams.get('review');
