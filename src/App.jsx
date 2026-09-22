@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
+import { supabase } from './supabaseClient.js'
 import './App.css'
 
+import Login from './components/Login.jsx'
 import DashboardHeader from './components/DashboardHeader.jsx'
 import StatusHud from './components/StatusHud.jsx'
 import WalkthroughReport from './components/WalkthroughReport.jsx'
+import RtoManagerDashboard from './components/RtoManagerDashboard.jsx'
 import UnitMatrixTab from './components/tabs/UnitMatrixTab.jsx'
 import LearnerProfileTab from './components/tabs/LearnerProfileTab.jsx'
 import LogisticsTab from './components/tabs/LogisticsTab.jsx'
@@ -14,7 +17,7 @@ import IndustryEngagementTab from './components/tabs/IndustryEngagementTab.jsx'
 import PublicReviewForm from './components/PublicReviewForm.jsx'
 
 function App() {
-  const API_URL = import.meta.env.VITE_API_URL || 'https://tas-backend-production.up.railway.app'
+  const API_URL = "http://localhost:8000"
 
   const urlParams = new URLSearchParams(window.location.search);
   const reviewTasId = urlParams.get('review');
@@ -23,6 +26,12 @@ function App() {
   if (reviewTasId) {
     return <PublicReviewForm tasId={reviewTasId} initialEmail={reviewEmail} />
   }
+
+  // Auth State
+  const [session, setSession] = useState(null)
+  
+  // Navigation State on Home screen ('wizard' or 'dashboard')
+  const [homeViewMode, setHomeViewMode] = useState('wizard')
 
   const [existingTasDocs, setExistingTasDocs] = useState([])
   const [productSearchQuery, setProductSearchQuery] = useState('')
@@ -54,17 +63,47 @@ function App() {
   })
 
   const [strategyDetails, setStrategyDetails] = useState({
-    delivery_logistics: '', training_rationale: '', resource_requirements: '', evaluation_strategy: '',
+    delivery_logistics: '', training_rationale: '', resource_requirements: '', evaluation_strategy: {},
     assessment_methods: [], assessment_rationale: '', trainer_allocations: {}, trainer_requirements: '',
     industry_engagements: [], delivery_methods: '', special_requirements: '', student_support: ''
   })
 
+  // Listen for login/logout events
   useEffect(() => {
-    fetch(`${API_URL}/tas`)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // The helper function to attach the secure token to backend requests
+  const getAuthHeaders = () => {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token}`
+    }
+  }
+
+  // Load existing documents only if logged in
+  useEffect(() => {
+    if (!session) return;
+    
+    // Pass the secure headers to satisfy the RTO check on the backend
+    fetch(`${API_URL}/tas`, { headers: getAuthHeaders() })
       .then(res => res.json())
-      .then(data => setExistingTasDocs(data || []))
+      .then(data => {
+        // Safety check to ensure we only set an array
+        if (Array.isArray(data)) {
+          setExistingTasDocs(data);
+        } else {
+          setExistingTasDocs([]);
+        }
+      })
       .catch(err => console.error("Error loading TAS history:", err))
-  }, [activeTasId])
+  }, [activeTasId, session])
 
   useEffect(() => {
     if (productSearchQuery.trim().length < 2) return setProductSearchResults([])
@@ -76,36 +115,78 @@ function App() {
     return () => clearTimeout(timer)
   }, [productSearchQuery])
 
+  // Filtered Unit Search Hook
   useEffect(() => {
     if (searchQuery.trim().length < 2) return setSearchResults([])
     const timer = setTimeout(() => {
-      fetch(`${API_URL}/units/search?query=${searchQuery}`).then(res => res.json()).then(data => setSearchResults(data))
+      fetch(`${API_URL}/units/search?query=${searchQuery}`)
+        .then(res => res.json())
+        .then(data => {
+          // Filter out nulls, empty strings, and literal "Title Unavailable" text
+          const unitsWithTitles = data.filter(unit => 
+            unit.unit_title && 
+            unit.unit_title.trim() !== '' &&
+            unit.unit_title !== 'Title Unavailable' &&
+            unit.unit_title.toLowerCase() !== 'null'
+          );
+          setSearchResults(unitsWithTitles);
+        })
+        .catch(err => console.error("Error searching units:", err));
     }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  // IF NOT LOGGED IN, SHOW LOGIN SCREEN
+  if (!session) {
+    return <Login />
+  }
+
   const handleCreateTas = (e) => {
-    e.preventDefault()
-    if (!selectedProductCode || !selectedProductTitle) return setMessage("Enter both a qualification code and title.")
+    e.preventDefault();
+    if (!selectedProductCode || !selectedProductTitle) {
+      return setMessage("Enter both a qualification code and title.");
+    }
     
+    setMessage("Creating Strategy Blueprint... Please wait.");
+
     fetch(`${API_URL}/products`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', 
+      headers: getAuthHeaders(),
       body: JSON.stringify({ code: selectedProductCode, title: selectedProductTitle })
-    }).finally(() => {
-      fetch(`${API_URL}/tas`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: selectedProductCode, delivery_mode: "To be determined", tas_name: tasNameInput, version: "1.0" })
-      }).then(res => res.json()).then(data => {
-        const newId = data[0]?.id || data.id
-        setActiveTasId(newId)
-        setActiveTasMeta({ name: tasNameInput, version: '1.0' })
-        setMessage("New TAS Blueprint created!")
-        setTasUnits([])
-        setLearnerProfile({ employment_status: '', reason_for_learning: '', industry_experience: '', acsf_learning: 0, acsf_reading: 0, acsf_writing: 0, acsf_oral: 0, acsf_numeracy: 0, acsf_digital: 0 })
-        setStrategyDetails({ delivery_logistics: '', training_rationale: '', resource_requirements: '', evaluation_strategy: '', assessment_methods: [], assessment_rationale: '', trainer_allocations: {}, trainer_requirements: '', industry_engagements: [], delivery_methods: '', special_requirements: '', student_support: '' })
-        fetchTasData(newId)
-      })
     })
+    .then(res => {
+      if (!res.ok) throw new Error("Failed to save qualification product.");
+      return res.json();
+    })
+    .then(() => {
+      return fetch(`${API_URL}/tas`, {
+        method: 'POST', 
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ product_id: selectedProductCode, delivery_mode: "To be determined", tas_name: tasNameInput, version: "1.0" })
+      });
+    })
+    .then(res => {
+      if (!res.ok) throw new Error("Failed to create TAS blueprint record.");
+      return res.json();
+    })
+    .then(data => {
+      const newId = data[0]?.id || data.id;
+      if (!newId) throw new Error("No valid ID returned from database.");
+      
+      setActiveTasId(newId);
+      setActiveTasMeta({ name: tasNameInput, version: '1.0' });
+      setMessage("New TAS Blueprint created!");
+      
+      setTasUnits([]);
+      setLearnerProfile({ employment_status: '', reason_for_learning: '', industry_experience: '', acsf_learning: 0, acsf_reading: 0, acsf_writing: 0, acsf_oral: 0, acsf_numeracy: 0, acsf_digital: 0 });
+      setStrategyDetails({ delivery_logistics: '', training_rationale: '', resource_requirements: '', evaluation_strategy: {}, assessment_methods: [], assessment_rationale: '', trainer_allocations: {}, trainer_requirements: '', industry_engagements: [], delivery_methods: '', special_requirements: '', student_support: '' });
+      
+      fetchTasData(newId);
+    })
+    .catch(err => {
+      console.error("Creation error:", err);
+      setMessage("Server connection failed or unauthorized.");
+    });
   }
 
   const handleResumeTas = (doc) => {
@@ -120,21 +201,58 @@ function App() {
   const handleDeleteTas = (e, tasId) => {
     e.stopPropagation() 
     if (window.confirm("Are you sure you want to delete this TAS? This will permanently erase all units, profile data, and strategy details attached to it.")) {
-      fetch(`${API_URL}/tas/${tasId}`, { method: 'DELETE' })
-      .then(res => { if (!res.ok) throw new Error("Failed to delete"); return res.json() })
+      fetch(`${API_URL}/tas/${tasId}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders() 
+      })
+      .then(res => { 
+        if (!res.ok) throw new Error("Failed to delete. You may need Admin privileges."); 
+        return res.json() 
+      })
       .then(() => {
         setMessage("TAS deleted successfully.")
         setExistingTasDocs(prev => prev.filter(doc => doc.id !== tasId))
         if (activeTasId === tasId) setActiveTasId(null)
-      }).catch(err => { console.error(err); setMessage("Error deleting TAS.") })
+      }).catch(err => { 
+        console.error(err); 
+        setMessage("Error deleting TAS. Only Admins can delete a whole Strategy Blueprint.") 
+      })
     }
   }
 
-  const fetchTasData = (tasId) => {
-    fetch(`${API_URL}/tas/${tasId}/calculate`).then(res => res.json()).then(data => setCalculation(data))
-    fetch(`${API_URL}/tas/${tasId}/units`).then(res => res.json()).then(data => setTasUnits(data || []))
-    fetch(`${API_URL}/tas/${tasId}/learner_profile`).then(res => res.json()).then(data => { if (data && Object.keys(data).length > 0) setLearnerProfile(data) })
-    fetch(`${API_URL}/tas/${tasId}/strategy_details`).then(res => res.json()).then(data => { if (data && Object.keys(data).length > 0) setStrategyDetails(data) })
+  const fetchTasData = async (tasId) => {
+    fetch(`${API_URL}/tas/${tasId}/calculate`).then(res => res.json()).then(data => setCalculation(data));
+    fetch(`${API_URL}/tas/${tasId}/learner_profile`).then(res => res.json()).then(data => { if (data && Object.keys(data).length > 0) setLearnerProfile(data) });
+    fetch(`${API_URL}/tas/${tasId}/strategy_details`).then(res => res.json()).then(data => { if (data && Object.keys(data).length > 0) setStrategyDetails(data) });
+
+    try {
+      const [unitsRes, stratsRes] = await Promise.all([
+        fetch(`${API_URL}/tas/${tasId}/units`),
+        fetch(`${API_URL}/tas/${tasId}/cluster_strategies`)
+      ]);
+      
+      const unitsData = await unitsRes.json();
+      const stratsData = await stratsRes.json();
+
+      if (unitsData && unitsData.length > 0) {
+        unitsData.sort((a, b) => {
+          const cNameA = (!a.cluster_name || a.cluster_name === "Standalone") ? `Standalone: ${a.unit_code}` : a.cluster_name;
+          const cNameB = (!b.cluster_name || b.cluster_name === "Standalone") ? `Standalone: ${b.unit_code}` : b.cluster_name;
+          
+          const stratA = stratsData.find(s => s.cluster_name === cNameA);
+          const stratB = stratsData.find(s => s.cluster_name === cNameB);
+          
+          const seqA = stratA && stratA.sequence_order !== undefined ? stratA.sequence_order : 999;
+          const seqB = stratB && stratB.sequence_order !== undefined ? stratB.sequence_order : 999;
+          
+          return seqA - seqB;
+        });
+      }
+      
+      setTasUnits(unitsData || []);
+    } catch (err) {
+      console.error("Error fetching units and strategies:", err);
+    }
   }
 
   const handleAddUnit = (e) => {
@@ -143,21 +261,23 @@ function App() {
     const finalClusterName = isClustered ? (clusterName || 'Unnamed Cluster') : 'Standalone'
 
     fetch(`${API_URL}/tas/${activeTasId}/units`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', 
+      headers: getAuthHeaders(),
       body: JSON.stringify({ unit_code: selectedUnitCode, supervised_hours: parseFloat(supervisedHours) || 0, unsupervised_hours: parseFloat(unsupervisedHours) || 0, cluster_name: finalClusterName })
     }).then(() => {
       setMessage(`Unit ${selectedUnitCode} added.`)
       setTasUnits(prev => [...prev, { unit_code: selectedUnitCode, supervised_hours: parseFloat(supervisedHours) || 0, unsupervised_hours: parseFloat(unsupervisedHours) || 0, cluster_name: finalClusterName }])
       setSelectedUnitCode(''); setSearchQuery(''); setSupervisedHours(''); setUnsupervisedHours('')
       fetchTasData(activeTasId)
-    })
+    }).catch(() => setMessage("Failed to add unit. Unauthorized."))
   }
 
   const handleDeleteUnit = (unitCode) => {
     if (!window.confirm(`Are you sure you want to remove ${unitCode}?`)) return
     
     fetch(`${API_URL}/tas/${activeTasId}/units/${unitCode}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: getAuthHeaders()
     })
     .then(res => {
       if (!res.ok) throw new Error("Failed to delete unit")
@@ -177,87 +297,169 @@ function App() {
     })
     .catch(err => {
       console.error(err)
-      setMessage("Error deleting unit.")
+      setMessage("Error deleting unit. Unauthorized.")
     })
   }
 
+  const handleMoveCluster = async (clusterNameKey, direction) => {
+    const grouped = {};
+    tasUnits.forEach(u => {
+      const cName = (!u.cluster_name || u.cluster_name === "Standalone") ? `Standalone: ${u.unit_code}` : u.cluster_name;
+      if (!grouped[cName]) grouped[cName] = [];
+    });
+    const clusterKeys = Object.keys(grouped);
+
+    const index = clusterKeys.indexOf(clusterNameKey);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
+    if (targetIndex < 0 || targetIndex >= clusterKeys.length) return;
+
+    const temp = clusterKeys[index];
+    clusterKeys[index] = clusterKeys[targetIndex];
+    clusterKeys[targetIndex] = temp;
+
+    let existingStrats = [];
+    try {
+      const res = await fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`);
+      existingStrats = await res.json();
+    } catch (e) {
+      console.error("Could not fetch existing strategies for sequence update.");
+    }
+
+    for (let seqIdx = 0; seqIdx < clusterKeys.length; seqIdx++) {
+      const cKey = clusterKeys[seqIdx];
+      const existing = existingStrats.find(s => s.cluster_name === cKey) || {};
+      
+      const payload = {
+        cluster_name: cKey,
+        delivery_methods: existing.delivery_methods || [],
+        assessment_methods: existing.assessment_methods || [],
+        assessment_rationale: existing.assessment_rationale || "",
+        resource_requirements: existing.resource_requirements || "",
+        sequence_order: seqIdx
+      };
+
+      await fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      }).catch(err => console.error("Error updating sequence:", err));
+    }
+
+    fetchTasData(activeTasId);
+  };
+
   const handleSaveProfile = (e) => {
     e.preventDefault()
-    fetch(`${API_URL}/tas/${activeTasId}/learner_profile`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(learnerProfile) }).then(() => setMessage("Learner Profile saved successfully!"))
+    fetch(`${API_URL}/tas/${activeTasId}/learner_profile`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(learnerProfile) }).then(() => setMessage("Learner Profile saved successfully!")).catch(() => setMessage("Failed to save. Unauthorized."))
   }
   
   const handleSaveDetails = (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    fetch(`${API_URL}/tas/${activeTasId}/strategy_details`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(strategyDetails) }).then(() => setMessage("Strategy Details saved successfully!"))
+    fetch(`${API_URL}/tas/${activeTasId}/strategy_details`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(strategyDetails) }).then(() => setMessage("Strategy Details saved successfully!")).catch(() => setMessage("Failed to save. Unauthorized."))
   }
 
   const inputStyle = { width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1em', boxSizing: 'border-box' }
   const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '6px', color: '#4a5568' }
 
   return (
-    <div style={{ padding: '30px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', maxWidth: '1100px', margin: '0 auto', color: '#2c3e50' }}>
+    <div style={{ padding: '30px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', maxWidth: '1100px', margin: '0 auto', color: '#2c3e50', position: 'relative' }}>
+      
+      {/* Sign Out Button */}
+      <button 
+        onClick={() => supabase.auth.signOut()} 
+        style={{ position: 'absolute', top: '15px', right: '30px', background: 'transparent', border: 'none', color: '#718096', cursor: 'pointer', textDecoration: 'underline' }}>
+        Sign Out ({session.user.email})
+      </button>
+
       <DashboardHeader activeTasId={activeTasId} isPreviewMode={isPreviewMode} setIsPreviewMode={setIsPreviewMode} />
       {message && <div style={{ background: '#ebf8ff', borderLeft: '4px solid #3182ce', padding: '12px', borderRadius: '4px', marginBottom: '20px', color: '#2b6cb0' }}>{message}</div>}
 
       {!activeTasId ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
-          
-          <div style={{ background: '#f7fafc', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ marginTop: 0, color: '#2d3748' }}>Start a New Strategy</h3>
-            <p style={{ fontSize: '0.85em', color: '#718096', marginBottom: '20px' }}>Select an existing qualification, or type a new code and title to add it to your database.</p>
-            <form onSubmit={handleCreateTas}>
-              <div style={{ position: 'relative', marginBottom: '20px' }}>
-                <label style={labelStyle}>Qualification Code:</label>
-                <input type="text" placeholder="e.g. TAE40122" value={selectedProductCode} onChange={(e) => { setSelectedProductCode(e.target.value.toUpperCase()); setProductSearchQuery(e.target.value); }} required style={inputStyle} />
-                {productSearchResults.length > 0 && (
-                  <ul style={{ position: 'absolute', background: 'white', border: '1px solid #cbd5e0', width: '100%', listStyle: 'none', padding: 0, margin: 0, maxHeight: '200px', overflowY: 'auto', zIndex: 10 }}>
-                    {productSearchResults.map(prod => (
-                      <li key={prod.code} onClick={() => { setSelectedProductCode(prod.code); setSelectedProductTitle(prod.title); setProductSearchResults([]); }} style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #edf2f7' }}><strong>{prod.code}</strong>: {prod.title}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div style={{ marginBottom: '20px' }}>
-                <label style={labelStyle}>Qualification Title:</label>
-                <input type="text" placeholder="e.g. Certificate IV in Training and Assessment" value={selectedProductTitle} onChange={(e) => setSelectedProductTitle(e.target.value)} required style={inputStyle} />
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <label style={labelStyle}>Strategy Target / Cohort Name:</label>
-                <input type="text" placeholder="e.g. Corporate Delivery, Online Paced..." value={tasNameInput} onChange={(e) => setTasNameInput(e.target.value)} required style={inputStyle} />
-              </div>
-
-              <button type="submit" disabled={!selectedProductCode || !selectedProductTitle} style={{ background: selectedProductCode && selectedProductTitle ? '#3182ce' : '#cbd5e0', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px', cursor: selectedProductCode && selectedProductTitle ? 'pointer' : 'not-allowed', fontWeight: '600', width: '100%' }}>Create Blueprint →</button>
-            </form>
+        <div>
+          {/* View Switcher Tabs */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '2px solid #edf2f7', paddingBottom: '15px' }}>
+            <button onClick={() => setHomeViewMode('wizard')} style={{ background: homeViewMode === 'wizard' ? '#3182ce' : '#edf2f7', color: homeViewMode === 'wizard' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              🛠️ Create & Resume Strategy
+            </button>
+            <button onClick={() => setHomeViewMode('dashboard')} style={{ background: homeViewMode === 'dashboard' ? '#3182ce' : '#edf2f7', color: homeViewMode === 'dashboard' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              📊 RTO Manager Dashboard & Publishing
+            </button>
           </div>
 
-          <div style={{ background: 'white', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ marginTop: 0, color: '#2d3748' }}>Resume Existing Strategy</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '10px' }}>
-              {existingTasDocs.length === 0 ? <p style={{ color: '#718096', fontStyle: 'italic' }}>No TAS documents found.</p> : existingTasDocs.map(doc => (
-                <div key={doc.id} onClick={() => handleResumeTas(doc)} style={{ border: '1px solid #cbd5e0', padding: '15px', borderRadius: '6px', cursor: 'pointer', background: '#f7fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <strong style={{ color: '#2b6cb0', display: 'block', fontSize: '1.1em' }}>{doc.product_id} - {doc.tas_name || 'Standard Delivery'}</strong>
-                    <span style={{ fontSize: '0.85em', color: '#718096' }}>Version {doc.version || '1.0'} | Status: {doc.status}</span>
+          {homeViewMode === 'dashboard' ? (
+            <RtoManagerDashboard API_URL={API_URL} getAuthHeaders={getAuthHeaders} onResumeTas={handleResumeTas} />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
+              <div style={{ background: '#f7fafc', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ marginTop: 0, color: '#2d3748' }}>Start a New Strategy</h3>
+                <p style={{ fontSize: '0.85em', color: '#718096', marginBottom: '20px' }}>Select an existing qualification, or type a new code and title to add it to your database.</p>
+                <form onSubmit={handleCreateTas}>
+                  <div style={{ position: 'relative', marginBottom: '20px' }}>
+                    <label style={labelStyle}>Qualification Code:</label>
+                    <input type="text" placeholder="e.g. TAE40122" value={selectedProductCode} onChange={(e) => { setSelectedProductCode(e.target.value.toUpperCase()); setProductSearchQuery(e.target.value); }} required style={inputStyle} />
+                    {productSearchResults.length > 0 && (
+                      <ul style={{ position: 'absolute', background: 'white', border: '1px solid #cbd5e0', width: '100%', listStyle: 'none', padding: 0, margin: 0, maxHeight: '200px', overflowY: 'auto', zIndex: 10 }}>
+                        {productSearchResults.map(prod => (
+                          <li key={prod.code} onClick={() => { setSelectedProductCode(prod.code); setSelectedProductTitle(prod.title); setProductSearchResults([]); }} style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #edf2f7' }}><strong>{prod.code}</strong>: {prod.title}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <span style={{ fontSize: '1.2em', color: '#a0aec0' }}>➔</span>
-                    <button 
-                      onClick={(e) => handleDeleteTas(e, doc.id)}
-                      style={{ background: '#fc8181', color: 'white', border: 'none', padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1em' }}
-                      title="Delete this TAS"
-                    >
-                      🗑️
-                    </button>
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={labelStyle}>Qualification Title:</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Certificate IV in Training and Assessment" 
+                      value={selectedProductTitle} 
+                      onChange={(e) => setSelectedProductTitle(e.target.value)} 
+                      required 
+                      style={{ ...inputStyle, background: 'white', color: '#2c3e50' }} 
+                    />
                   </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={labelStyle}>Strategy Target / Cohort Name:</label>
+                    <input type="text" placeholder="e.g. Corporate Delivery, Online Paced..." value={tasNameInput} onChange={(e) => setTasNameInput(e.target.value)} required style={inputStyle} />
+                  </div>
+
+                  <button type="submit" disabled={!selectedProductCode || !selectedProductTitle} style={{ background: selectedProductCode && selectedProductTitle ? '#3182ce' : '#cbd5e0', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px', cursor: selectedProductCode && selectedProductTitle ? 'pointer' : 'not-allowed', fontWeight: '600', width: '100%' }}>Create Blueprint →</button>
+                </form>
+              </div>
+
+              <div style={{ background: 'white', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ marginTop: 0, color: '#2d3748' }}>Resume Existing Strategy</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto', paddingRight: '10px' }}>
+                  {existingTasDocs.length === 0 ? <p style={{ color: '#718096', fontStyle: 'italic' }}>No TAS documents found.</p> : existingTasDocs.map(doc => (
+                    <div key={doc.id} onClick={() => handleResumeTas(doc)} style={{ border: '1px solid #cbd5e0', padding: '15px', borderRadius: '6px', cursor: 'pointer', background: '#f7fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                          <span style={{ background: doc.status === 'Published' ? '#c6f6d5' : '#feebc8', color: doc.status === 'Published' ? '#22543d' : '#744210', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7em', fontWeight: 'bold' }}>
+                            {doc.status || 'Draft'}
+                          </span>
+                          <strong style={{ color: '#2b6cb0', fontSize: '1.05em' }}>{doc.product_id} - {doc.tas_name || 'Standard Delivery'}</strong>
+                        </div>
+                        <span style={{ fontSize: '0.85em', color: '#718096' }}>Version {doc.version || '1.0'}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <span style={{ fontSize: '1.2em', color: '#a0aec0' }}>➔</span>
+                        <button 
+                          onClick={(e) => handleDeleteTas(e, doc.id)}
+                          style={{ background: '#fc8181', color: 'white', border: 'none', padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1em' }}
+                          title="Delete this TAS"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-
+          )}
         </div>
       ) : isPreviewMode ? (
-        <WalkthroughReport activeTasMeta={activeTasMeta} selectedProductCode={selectedProductCode} selectedProductTitle={selectedProductTitle} learnerProfile={learnerProfile} strategyDetails={strategyDetails} tasUnits={tasUnits} calculation={calculation} />
+        <WalkthroughReport activeTasId={activeTasId} activeTasMeta={activeTasMeta} selectedProductCode={selectedProductCode} selectedProductTitle={selectedProductTitle} learnerProfile={learnerProfile} strategyDetails={strategyDetails} tasUnits={tasUnits} calculation={calculation} />
       ) : (
         <div>
           <div style={{ background: '#edf2f7', padding: '15px 20px', borderRadius: '8px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -274,20 +476,20 @@ function App() {
           <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '2px solid #edf2f7', paddingBottom: '15px', overflowX: 'auto' }}>
             <button onClick={() => setActiveTab('matrix')} style={{ background: activeTab === 'matrix' ? '#3182ce' : 'transparent', color: activeTab === 'matrix' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📚 1. Unit Matrix</button>
             <button onClick={() => setActiveTab('learner')} style={{ background: activeTab === 'learner' ? '#3182ce' : 'transparent', color: activeTab === 'learner' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>🎯 2. Target Learner</button>
-            <button onClick={() => setActiveTab('logistics')} style={{ background: activeTab === 'logistics' ? '#3182ce' : 'transparent', color: activeTab === 'logistics' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>🚚 3. Delivery</button>
-            <button onClick={() => setActiveTab('resources')} style={{ background: activeTab === 'resources' ? '#3182ce' : 'transparent', color: activeTab === 'resources' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>🛠️ 4. Resources</button>
+            <button onClick={() => setActiveTab('logistics')} style={{ background: activeTab === 'logistics' ? '#3182ce' : 'transparent', color: activeTab === 'logistics' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>🚚 3. Delivery & Resources</button>
+            <button onClick={() => setActiveTab('resources')} style={{ background: activeTab === 'resources' ? '#3182ce' : 'transparent', color: activeTab === 'resources' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📊 4. Evaluation</button>
             <button onClick={() => setActiveTab('assessment')} style={{ background: activeTab === 'assessment' ? '#3182ce' : 'transparent', color: activeTab === 'assessment' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📋 5. Assessment</button>
             <button onClick={() => setActiveTab('trainers')} style={{ background: activeTab === 'trainers' ? '#3182ce' : 'transparent', color: activeTab === 'trainers' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>🧑‍🏫 6. Trainers</button>
             <button onClick={() => setActiveTab('industry')} style={{ background: activeTab === 'industry' ? '#3182ce' : 'transparent', color: activeTab === 'industry' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>🤝 7. Industry</button>
           </div>
 
-          {activeTab === 'matrix' && <UnitMatrixTab isClustered={isClustered} setIsClustered={setIsClustered} clusterName={clusterName} setClusterName={setClusterName} searchQuery={searchQuery} setSearchQuery={setSearchQuery} searchResults={searchResults} setSearchResults={setSearchResults} selectedUnitCode={selectedUnitCode} setSelectedUnitCode={setSelectedUnitCode} supervisedHours={supervisedHours} setSupervisedHours={setSupervisedHours} unsupervisedHours={unsupervisedHours} setUnsupervisedHours={setUnsupervisedHours} tasUnits={tasUnits} handleAddUnit={handleAddUnit} handleDeleteUnit={handleDeleteUnit} />}
+          {activeTab === 'matrix' && <UnitMatrixTab isClustered={isClustered} setIsClustered={setIsClustered} clusterName={clusterName} setClusterName={setClusterName} searchQuery={searchQuery} setSearchQuery={setSearchQuery} searchResults={searchResults} setSearchResults={setSearchResults} selectedUnitCode={selectedUnitCode} setSelectedUnitCode={setSelectedUnitCode} supervisedHours={supervisedHours} setSupervisedHours={setSupervisedHours} unsupervisedHours={unsupervisedHours} setUnsupervisedHours={setUnsupervisedHours} tasUnits={tasUnits} handleAddUnit={handleAddUnit} handleDeleteUnit={handleDeleteUnit} handleMoveCluster={handleMoveCluster} />}
           {activeTab === 'learner' && <LearnerProfileTab activeTasId={activeTasId} learnerProfile={learnerProfile} setLearnerProfile={setLearnerProfile} handleSaveProfile={handleSaveProfile} />}
           {activeTab === 'logistics' && <LogisticsTab activeTasId={activeTasId} strategyDetails={strategyDetails} setStrategyDetails={setStrategyDetails} handleSaveDetails={handleSaveDetails} />}
           {activeTab === 'resources' && <ResourcesTab activeTasId={activeTasId} strategyDetails={strategyDetails} setStrategyDetails={setStrategyDetails} handleSaveDetails={handleSaveDetails} />}
           {activeTab === 'assessment' && <AssessmentTab activeTasId={activeTasId} strategyDetails={strategyDetails} setStrategyDetails={setStrategyDetails} handleSaveDetails={handleSaveDetails} />}
           {activeTab === 'trainers' && <TrainersTab activeTasId={activeTasId} tasUnits={tasUnits} strategyDetails={strategyDetails} setStrategyDetails={setStrategyDetails} handleSaveDetails={handleSaveDetails} />}
-          {activeTab === 'industry' && <IndustryEngagementTab activeTasId={activeTasId} strategyDetails={strategyDetails} setStrategyDetails={setStrategyDetails} handleSaveDetails={handleSaveDetails} />}
+          {activeTab === 'industry' && <IndustryEngagementTab activeTasId={activeTasId} tasUnits={tasUnits} strategyDetails={strategyDetails} setStrategyDetails={setStrategyDetails} handleSaveDetails={handleSaveDetails} />}
         </div>
       )}
     </div>

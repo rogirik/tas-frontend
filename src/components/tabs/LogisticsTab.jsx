@@ -1,132 +1,99 @@
-import React, { useState } from 'react'
+import React from 'react';
 
 export default function LogisticsTab({ activeTasId, strategyDetails, setStrategyDetails, handleSaveDetails }) {
-  const [polishingState, setPolishingState] = useState({})
+  if (!activeTasId) return <div style={{ padding: '20px' }}>No TAS ID provided. Please open a TAS first.</div>;
 
-  const inputStyle = { width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1em', boxSizing: 'border-box', fontFamily: 'inherit', textAlign: 'left' }
-  const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '6px', color: '#4a5568' }
+  const handleInputChange = (field, value) => {
+    setStrategyDetails(prev => ({ ...prev, [field]: value }));
+  };
 
-  const handlePolish = (field) => {
-    if (!activeTasId) return
-    const currentText = strategyDetails[field]
-    if (!currentText || currentText.trim() === '') {
-      alert("Please write some rough notes first before polishing!")
-      return
-    }
-
-    setPolishingState(prev => ({ ...prev, [field]: true }))
-
-    fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/polish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ section_name: field, current_text: currentText })
-    })
-    .then(res => res.json())
-    .then(data => {
-      setStrategyDetails(prev => ({ ...prev, [field]: data.generated_text }))
-    })
-    .catch(err => console.error("AI Generation failed:", err))
-    .finally(() => {
-      setPolishingState(prev => ({ ...prev, [field]: false }))
-    })
-  }
+  const inputStyle = { width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1em', boxSizing: 'border-box', marginTop: '6px', fontFamily: 'inherit' };
+  const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '20px', color: '#4a5568' };
 
   return (
-    <div style={{ background: '#f7fafc', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
-      <h3 style={{ marginTop: 0, color: '#2d3748' }}>Training Delivery & Student Support</h3>
-      <form onSubmit={handleSaveDetails}>
-        
-        <div style={{ marginBottom: '25px', background: '#fff', padding: '25px', borderRadius: '8px', border: '1px solid #cbd5e0' }}>
-          
-          {/* Logistics Section */}
-          <div style={{ marginBottom: '25px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={labelStyle}>High-Level Delivery Logistics:</label>
-              <button type="button" onClick={() => handlePolish('delivery_logistics')} disabled={polishingState['delivery_logistics']} style={{ background: 'transparent', color: '#3182ce', border: '1px solid #3182ce', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>
-                {polishingState['delivery_logistics'] ? '⏳ Polishing...' : '✨ Polish Language'}
-              </button>
-            </div>
-            <textarea 
-              value={strategyDetails.delivery_logistics || ''} 
-              onChange={e => setStrategyDetails({...strategyDetails, delivery_logistics: e.target.value})} 
-              rows="3" 
-              style={inputStyle} 
-              placeholder="e.g. Delivered face-to-face over 12 months at the main campus..." 
-            />
-          </div>
+    <div style={{ background: 'white', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+      <h2 style={{ marginTop: 0, color: '#1a365d', borderBottom: '2px solid #edf2f7', paddingBottom: '15px', marginBottom: '25px' }}>Delivery & Resources</h2>
 
-          {/* Delivery Methods Section */}
-          <div style={{ marginBottom: '25px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={labelStyle}>Training Delivery Methods:</label>
-              <button type="button" onClick={() => handlePolish('delivery_methods')} disabled={polishingState['delivery_methods']} style={{ background: 'transparent', color: '#3182ce', border: '1px solid #3182ce', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>
-                {polishingState['delivery_methods'] ? '⏳ Polishing...' : '✨ Polish Language'}
-              </button>
-            </div>
-            <textarea 
-              value={strategyDetails.delivery_methods || ''} 
-              onChange={e => setStrategyDetails({...strategyDetails, delivery_methods: e.target.value})} 
-              rows="4" 
-              style={inputStyle} 
-              placeholder="Describe how the training will be conducted (e.g. practical workshops, simulated environments, self-paced online modules, work placements)..." 
-            />
-          </div>
+      <label style={labelStyle}>
+        Program Delivery Logistics:
+        <span style={{ display: 'block', fontSize: '0.85em', color: '#718096', fontWeight: 'normal', marginTop: '4px' }}>
+          Detail the overarching delivery structure (e.g. term dates, campus locations, scheduling).
+        </span>
+        <textarea 
+          rows="4" 
+          style={inputStyle}
+          value={strategyDetails.delivery_logistics || ""}
+          onChange={(e) => handleInputChange("delivery_logistics", e.target.value)}
+          placeholder="e.g. Program is delivered over 12 months, split into 4 terms..."
+        />
+      </label>
 
-          {/* Special Requirements Section */}
-          <div style={{ marginBottom: '25px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={labelStyle}>Special & Entry Requirements:</label>
-              <button type="button" onClick={() => handlePolish('special_requirements')} disabled={polishingState['special_requirements']} style={{ background: 'transparent', color: '#3182ce', border: '1px solid #3182ce', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>
-                {polishingState['special_requirements'] ? '⏳ Polishing...' : '✨ Polish Language'}
-              </button>
-            </div>
-            <textarea 
-              value={strategyDetails.special_requirements || ''} 
-              onChange={e => setStrategyDetails({...strategyDetails, special_requirements: e.target.value})} 
-              rows="3" 
-              style={inputStyle} 
-              placeholder="List any prerequisites, required PPE, physical fitness requirements, or BYOD (laptop) policies..." 
-            />
-          </div>
+      <label style={labelStyle}>
+        Training Rationale:
+        <span style={{ display: 'block', fontSize: '0.85em', color: '#718096', fontWeight: 'normal', marginTop: '4px' }}>
+          Why has this specific mode of delivery been chosen for this cohort?
+        </span>
+        <textarea 
+          rows="3" 
+          style={inputStyle}
+          value={strategyDetails.training_rationale || ""}
+          onChange={(e) => handleInputChange("training_rationale", e.target.value)}
+          placeholder="e.g. A blended approach was selected to accommodate the working hours..."
+        />
+      </label>
 
-          {/* Student Support Section */}
-          <div style={{ marginBottom: '25px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={labelStyle}>Student Support & Reasonable Adjustment (Clause 1.7):</label>
-              <button type="button" onClick={() => handlePolish('student_support')} disabled={polishingState['student_support']} style={{ background: 'transparent', color: '#3182ce', border: '1px solid #3182ce', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>
-                {polishingState['student_support'] ? '⏳ Polishing...' : '✨ Polish Language'}
-              </button>
-            </div>
-            <textarea 
-              value={strategyDetails.student_support || ''} 
-              onChange={e => setStrategyDetails({...strategyDetails, student_support: e.target.value})} 
-              rows="4" 
-              style={inputStyle} 
-              placeholder="Detail how you will identify support needs, provide LLND assistance, and implement reasonable adjustments for assessment..." 
-            />
-          </div>
+      <label style={labelStyle}>
+        Student Support Strategies:
+        <span style={{ display: 'block', fontSize: '0.85em', color: '#718096', fontWeight: 'normal', marginTop: '4px' }}>
+          How will you support LLN needs, reasonable adjustments, and general student welfare?
+        </span>
+        <textarea 
+          rows="3" 
+          style={inputStyle}
+          value={strategyDetails.student_support || ""}
+          onChange={(e) => handleInputChange("student_support", e.target.value)}
+          placeholder="e.g. Students identified with LLN needs will be provided additional mentoring..."
+        />
+      </label>
 
-        </div>
+      <h3 style={{ marginTop: '30px', color: '#2b6cb0', borderBottom: '2px solid #edf2f7', paddingBottom: '8px', marginBottom: '20px' }}>Global Facility & Equipment Requirements</h3>
 
-        {/* Rationale Section */}
-        <div style={{ marginBottom: '25px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <label style={labelStyle}>Amount of Training Rationale (Clauses 1.1 & 1.2):</label>
-            <button type="button" onClick={() => handlePolish('training_rationale')} disabled={polishingState['training_rationale']} style={{ background: 'transparent', color: '#3182ce', border: '1px solid #3182ce', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>
-              {polishingState['training_rationale'] ? '⏳ Polishing...' : '✨ Polish Language'}
-            </button>
-          </div>
-          <textarea 
-            value={strategyDetails.training_rationale || ''} 
-            onChange={e => setStrategyDetails({...strategyDetails, training_rationale: e.target.value})} 
-            rows="6" 
-            style={inputStyle} 
-            placeholder="Justify why this volume of learning and delivery structure is appropriate for your target learner cohort..." 
-          />
-        </div>
+      <label style={labelStyle}>
+        Standard Resources:
+        <span style={{ display: 'block', fontSize: '0.85em', color: '#718096', fontWeight: 'normal', marginTop: '4px' }}>
+          Detail the overarching physical or digital resources required for this program.
+        </span>
+        <textarea 
+          rows="3" 
+          style={inputStyle}
+          value={strategyDetails.resource_requirements || ""}
+          onChange={(e) => handleInputChange("resource_requirements", e.target.value)}
+          placeholder="e.g. Access to a simulated warehouse environment, generic PPE..."
+        />
+      </label>
 
-        <button type="submit" style={{ background: '#38a169', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>💾 Save Delivery Details</button>
-      </form>
+      <label style={labelStyle}>
+        Special Resource Requirements:
+        <span style={{ display: 'block', fontSize: '0.85em', color: '#718096', fontWeight: 'normal', marginTop: '4px' }}>
+          Are there any specialist tools, licensed software, or third-party facilities required?
+        </span>
+        <textarea 
+          rows="2" 
+          style={inputStyle}
+          value={strategyDetails.special_requirements || ""}
+          onChange={(e) => handleInputChange("special_requirements", e.target.value)}
+          placeholder="e.g. 15 licenses for Xero Accounting Software..."
+        />
+      </label>
+
+      <div style={{ marginTop: '30px', borderTop: '2px solid #edf2f7', paddingTop: '20px' }}>
+        <button 
+          onClick={handleSaveDetails}
+          style={{ background: '#3182ce', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.05em' }}
+        >
+          Save Delivery & Resources Plan
+        </button>
+      </div>
     </div>
-  )
+  );
 }

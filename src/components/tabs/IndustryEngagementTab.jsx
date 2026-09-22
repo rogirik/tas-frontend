@@ -1,200 +1,156 @@
-import React, { useState } from 'react'
+import React from 'react';
 
-export default function IndustryEngagementTab({ activeTasId, strategyDetails, setStrategyDetails, handleSaveDetails }) {
-  const [partnerName, setPartnerName] = useState('')
-  const [partnerEmail, setPartnerEmail] = useState('')
-  
-  const inputStyle = { width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1em', boxSizing: 'border-box', fontFamily: 'inherit' }
-  const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '6px', color: '#4a5568' }
+export default function IndustryEngagementTab({ activeTasId, tasUnits, strategyDetails, setStrategyDetails, handleSaveDetails }) {
+  if (!activeTasId) return <div style={{ padding: '20px' }}>No TAS ID provided. Please open a TAS first.</div>;
 
-  const engagements = strategyDetails.industry_engagements || []
+  const engagements = strategyDetails.industry_engagements || [];
 
-  const handleSendAndLog = (e) => {
-    e.preventDefault()
-    
-    if (!partnerName || !partnerEmail) {
-      alert("Please fill in the partner's name and email.")
-      return
-    }
+  // Generate a dynamic list of linkable TAS areas based on the current active TAS
+  const uniqueClusters = [...new Set((tasUnits || []).map(u => u.cluster_name || "Standalone"))];
+  const linkableAreas = [
+    "Global: Delivery & Resources",
+    "Global: Learner Profile",
+    "Global: Evaluation Plan",
+    ...uniqueClusters.map(c => `Cluster: ${c}`)
+  ];
 
-    // Generate the magic native link pointing back to your app
-    const nativeLink = `${window.location.origin}/?review=${activeTasId}&email=${encodeURIComponent(partnerEmail)}`
-
-    // Log it to the database instantly
-    const newLog = {
-      date: new Date().toLocaleDateString(),
-      partner_name: partnerName,
-      partner_email: partnerEmail,
-      status: "Pending Response",
-      form_link: nativeLink
-    }
-
-    const updatedEngagements = [...engagements, newLog]
-    
-    setStrategyDetails(prev => {
-      const newState = { ...prev, industry_engagements: updatedEngagements }
-      fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/strategy_details`, { 
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newState) 
-      })
-      return newState
-    })
-
-    // Open the email app
-    const subject = `Industry Consultation: Training & Assessment Strategy Review`
-    const body = `Hi ${partnerName},\n\nWe are currently reviewing our Training and Assessment Strategy (TAS) and highly value your industry expertise.\n\nCould you please take 5 minutes to review our proposed structure and provide your official feedback via our secure portal?\n\nSecure Feedback Portal:\n${nativeLink}\n\nYour feedback ensures our training aligns with current workplace standards.\n\nThank you for your time.`
-    
-    window.location.href = `mailto:${partnerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-
-    setPartnerName('')
-    setPartnerEmail('')
-  }
-
-  // --- NEW: Resend Function ---
-  const handleResend = (log, index) => {
-    // Open the email app with a follow-up message
-    const subject = `Follow-Up: Industry Consultation for TAS Review`
-    const body = `Hi ${log.partner_name},\n\nJust floating this to the top of your inbox. We are currently reviewing our Training and Assessment Strategy (TAS) and would highly value your industry expertise.\n\nCould you please take 5 minutes to provide your official feedback via our secure portal?\n\nSecure Feedback Portal:\n${log.form_link}\n\nThank you for your time and support.`
-    
-    window.location.href = `mailto:${log.partner_email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-
-    // Update the log status and date
-    const updatedEngagements = [...engagements]
+  // Helper to update a specific engagement index
+  const updateEngagement = (index, field, value) => {
+    const updatedEngagements = [...engagements];
     updatedEngagements[index] = {
-      ...log,
-      date: new Date().toLocaleDateString(), // Bumps the date to today
-      status: "Follow-up Sent"
-    }
+      ...updatedEngagements[index],
+      [field]: value
+    };
+    setStrategyDetails(prev => ({ ...prev, industry_engagements: updatedEngagements }));
+  };
 
-    setStrategyDetails(prev => {
-      const newState = { ...prev, industry_engagements: updatedEngagements }
-      fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/strategy_details`, { 
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newState) 
-      })
-      return newState
-    })
-  }
-
-  // --- NEW: Delete Function ---
-  const handleDeleteLog = (indexToRemove) => {
-    if (!window.confirm("Are you sure you want to remove this engagement log?")) return
-
-    const updatedEngagements = engagements.filter((_, idx) => idx !== indexToRemove)
+  const handleToggleLink = (engagementIndex, area) => {
+    const currentLinks = engagements[engagementIndex].linked_items || [];
+    const newLinks = currentLinks.includes(area)
+      ? currentLinks.filter(item => item !== area)
+      : [...currentLinks, area];
     
-    setStrategyDetails(prev => {
-      const newState = { ...prev, industry_engagements: updatedEngagements }
-      fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/tas/${activeTasId}/strategy_details`, { 
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newState) 
-      })
-      return newState
-    })
-  }
+    updateEngagement(engagementIndex, 'linked_items', newLinks);
+  };
+
+  const inputStyle = { width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1em', boxSizing: 'border-box', marginTop: '6px', fontFamily: 'inherit' };
 
   return (
-    <div style={{ background: '#f7fafc', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
-      <h3 style={{ marginTop: 0, color: '#2d3748' }}>Industry Engagement & Consultation</h3>
-      
-      <div style={{ marginBottom: '30px', background: '#fff', padding: '25px', borderRadius: '8px', border: '1px solid #cbd5e0' }}>
-        <h4 style={{ margin: '0 0 15px 0', color: '#2d3748' }}>Request Industry Feedback</h4>
-        <p style={{ fontSize: '0.85em', color: '#718096', marginBottom: '20px' }}>Enter the partner's details. Clicking send will open your email app with a pre-written message containing a secure link to your app's built-in feedback portal, and auto-log the request below.</p>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-          <div>
-            <label style={labelStyle}>Partner Name:</label>
-            <input type="text" value={partnerName} onChange={e => setPartnerName(e.target.value)} placeholder="e.g. Jane Smith" style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Partner Email:</label>
-            <input type="email" value={partnerEmail} onChange={e => setPartnerEmail(e.target.value)} placeholder="e.g. jane@company.com" style={inputStyle} />
-          </div>
+    <div style={{ background: 'white', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #edf2f7', paddingBottom: '15px', marginBottom: '25px' }}>
+        <div>
+          <h2 style={{ marginTop: 0, color: '#1a365d', marginBottom: '5px' }}>Industry Engagement Matrix</h2>
+          <p style={{ color: '#718096', margin: 0, fontSize: '0.9em' }}>Map received feedback to specific TAS clusters or logistics, and document your strategic adjustments.</p>
         </div>
-
-        <button type="button" onClick={handleSendAndLog} style={{ background: '#3182ce', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' }}>
-          ✉️ Auto-Log & Open Email Client
+        <button 
+          onClick={() => {
+            // Manual Add Stub for testing/offline entry
+            const newPartner = { partner_name: 'New Partner', partner_email: '', status: 'Draft', answers: {}, linked_items: [], action_taken: '' };
+            setStrategyDetails(prev => ({ ...prev, industry_engagements: [...engagements, newPartner] }));
+          }}
+          style={{ background: '#edf2f7', color: '#4a5568', border: '1px solid #cbd5e0', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          + Add Manual Entry
         </button>
       </div>
 
-      <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', border: '1px solid #cbd5e0' }}>
-        <h4 style={{ margin: '0 0 15px 0', color: '#2d3748' }}>Consultation Log</h4>
-        {engagements.length === 0 ? (
-          <p style={{ color: '#718096', fontStyle: 'italic' }}>No industry engagements logged yet.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9em' }}>
-              <thead>
-                <tr style={{ background: '#edf2f7' }}>
-                  <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e0' }}>Date</th>
-                  <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e0' }}>Partner</th>
-                  <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e0' }}>Email</th>
-                  <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e0' }}>Status</th>
-                  <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e0', textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {engagements.map((log, idx) => (
-                  <React.Fragment key={idx}>
-                    <tr style={{ borderBottom: log.answers ? 'none' : '1px solid #edf2f7' }}>
-                      <td style={{ padding: '10px', color: '#718096' }}>{log.date}</td>
-                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#2d3748' }}>{log.partner_name}</td>
-                      <td style={{ padding: '10px', color: '#3182ce' }}>{log.partner_email}</td>
-                      <td style={{ padding: '10px' }}>
-                        <span style={{ 
-                          background: log.answers ? '#c6f6d5' : (log.status === "Follow-up Sent" ? '#e9d8fd' : '#feebc8'), 
-                          color: log.answers ? '#22543d' : (log.status === "Follow-up Sent" ? '#44337a' : '#dd6b20'), 
-                          padding: '4px 8px', borderRadius: '4px', fontSize: '0.85em', fontWeight: 'bold' 
-                        }}>
-                          {log.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                          <button 
-                            type="button"
-                            onClick={() => handleResend(log, idx)}
-                            disabled={!!log.answers}
-                            style={{ background: log.answers ? '#cbd5e0' : '#3182ce', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: log.answers ? 'not-allowed' : 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}
-                            title={log.answers ? "Already received" : "Resend Email"}
-                          >
-                            ✉️ Resend
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={() => handleDeleteLog(idx)}
-                            style={{ background: '#fc8181', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}
-                            title="Delete Log"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {/* Automatically expand and show answers if the partner submitted the form */}
-                    {log.answers && (
-                      <tr style={{ borderBottom: '2px solid #cbd5e0', background: '#f7fafc' }}>
-                        <td colSpan="5" style={{ padding: '15px' }}>
-                          <div style={{ background: '#fff', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                            <strong style={{ color: '#2b6cb0', fontSize: '0.9em' }}>Q1. Industry Requirements:</strong>
-                            <p style={{ margin: '4px 0 15px 0', fontSize: '0.9em', color: '#4a5568' }}>{log.answers.q1}</p>
-                            
-                            <strong style={{ color: '#2b6cb0', fontSize: '0.9em' }}>Q2. Structure & Delivery:</strong>
-                            <p style={{ margin: '4px 0 15px 0', fontSize: '0.9em', color: '#4a5568' }}>{log.answers.q2}</p>
-                            
-                            <strong style={{ color: '#2b6cb0', fontSize: '0.9em' }}>Q3. Workplace Activities:</strong>
-                            <p style={{ margin: '4px 0 15px 0', fontSize: '0.9em', color: '#4a5568' }}>{log.answers.q3}</p>
-                            
-                            <strong style={{ color: '#2b6cb0', fontSize: '0.9em' }}>Q4. Assessment Methods:</strong>
-                            <p style={{ margin: '4px 0 0 0', fontSize: '0.9em', color: '#4a5568' }}>{log.answers.q4}</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {engagements.length === 0 ? (
+        <div style={{ padding: '30px', textAlign: 'center', background: '#f7fafc', borderRadius: '8px', border: '1px dashed #cbd5e0', color: '#718096' }}>
+          No industry feedback logged yet. Use the public link to request feedback.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+          {engagements.map((eng, index) => (
+            <div key={index} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              
+              {/* Card Header */}
+              <div style={{ background: '#f7fafc', padding: '15px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <input 
+                    style={{ fontWeight: 'bold', fontSize: '1.1em', color: '#2b6cb0', border: 'none', background: 'transparent', padding: 0, outline: 'none' }}
+                    value={eng.partner_name || ''}
+                    onChange={(e) => updateEngagement(index, 'partner_name', e.target.value)}
+                    placeholder="Partner Name"
+                  />
+                  <div style={{ fontSize: '0.85em', color: '#718096', marginTop: '2px' }}>{eng.partner_email || 'No email provided'} | Status: {eng.status || 'Draft'}</div>
+                </div>
+                {eng.date && <div style={{ fontSize: '0.85em', color: '#a0aec0' }}>Logged: {eng.date}</div>}
+              </div>
 
+              {/* Feedback Content */}
+              <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                
+                {/* Left Column: The Feedback */}
+                <div>
+                  <h4 style={{ margin: '0 0 10px 0', color: '#4a5568', fontSize: '0.95em', textTransform: 'uppercase' }}>Received Feedback</h4>
+                  {eng.answers && Object.keys(eng.answers).length > 0 ? (
+                    <div style={{ background: '#edf2f7', padding: '15px', borderRadius: '6px', fontSize: '0.9em', color: '#2d3748' }}>
+                      {Object.entries(eng.answers).map(([q, a]) => (
+                        <div key={q} style={{ marginBottom: '10px' }}>
+                          <strong style={{ display: 'block', color: '#4a5568' }}>{q.toUpperCase()}:</strong>
+                          {a || <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No response</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ background: '#fff5f5', padding: '15px', borderRadius: '6px', fontSize: '0.9em', color: '#c53030' }}>
+                      Pending response from partner.
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: The Strategy Mapping */}
+                <div>
+                  <h4 style={{ margin: '0 0 10px 0', color: '#4a5568', fontSize: '0.95em', textTransform: 'uppercase' }}>Strategy Mapping</h4>
+                  
+                  <div style={{ marginBottom: '15px' }}>
+                    <strong style={{ display: 'block', fontSize: '0.85em', color: '#718096', marginBottom: '8px' }}>Link to TAS Items:</strong>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {linkableAreas.map(area => {
+                        const isLinked = (eng.linked_items || []).includes(area);
+                        return (
+                          <button
+                            key={area}
+                            onClick={() => handleToggleLink(index, area)}
+                            style={{
+                              padding: '4px 10px', borderRadius: '20px', fontSize: '0.8em', fontWeight: 'bold', cursor: 'pointer', border: '1px solid',
+                              background: isLinked ? '#ebf8ff' : '#f7fafc',
+                              color: isLinked ? '#3182ce' : '#a0aec0',
+                              borderColor: isLinked ? '#90cdf4' : '#e2e8f0',
+                            }}
+                          >
+                            {isLinked ? '✓ ' : '+ '}{area}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '0.85em', color: '#718096', marginBottom: '8px' }}>Action Taken / Adjustments Made:</strong>
+                    <textarea 
+                      style={{ ...inputStyle, minHeight: '80px', marginTop: 0 }}
+                      value={eng.action_taken || ''}
+                      onChange={(e) => updateEngagement(index, 'action_taken', e.target.value)}
+                      placeholder="e.g. Based on this feedback, we added Xero software access to Cluster 2's resource requirements."
+                    />
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: '30px', borderTop: '2px solid #edf2f7', paddingTop: '20px' }}>
+        <button 
+          onClick={handleSaveDetails}
+          style={{ background: '#3182ce', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.05em' }}
+        >
+          Save Industry Matrix
+        </button>
+      </div>
     </div>
-  )
+  );
 }
