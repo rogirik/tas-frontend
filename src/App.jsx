@@ -17,7 +17,10 @@ import IndustryEngagementTab from './components/tabs/IndustryEngagementTab.jsx'
 import PublicReviewForm from './components/PublicReviewForm.jsx'
 
 function App() {
-  const API_URL = "http://localhost:8000"
+  // Automatically switches between your local backend and live Render backend
+  const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? "http://localhost:8000"
+    : "https://tas-backend-7t7y.onrender.com"; 
 
   const urlParams = new URLSearchParams(window.location.search);
   const reviewTasId = urlParams.get('review');
@@ -27,10 +30,12 @@ function App() {
     return <PublicReviewForm tasId={reviewTasId} initialEmail={reviewEmail} />
   }
 
-  // Auth State
+  // Auth & Recovery State
   const [session, setSession] = useState(null)
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
   
-  // Navigation State on Home screen ('wizard' or 'dashboard')
+  // Navigation State on Home screen
   const [homeViewMode, setHomeViewMode] = useState('wizard')
 
   const [existingTasDocs, setExistingTasDocs] = useState([])
@@ -68,18 +73,21 @@ function App() {
     industry_engagements: [], delivery_methods: '', special_requirements: '', student_support: ''
   })
 
-  // Listen for login/logout events
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
     })
+    
+    // Listen for auth events, specifically intercepting password recovery links
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === 'PASSWORD_RECOVERY') {
+        setIsRecoveringPassword(true)
+      }
       setSession(session)
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  // The helper function to attach the secure token to backend requests
   const getAuthHeaders = () => {
     return {
       'Content-Type': 'application/json',
@@ -87,23 +95,30 @@ function App() {
     }
   }
 
-  // Load existing documents only if logged in
-  useEffect(() => {
-    if (!session) return;
+  // Handle saving the newly typed password to Supabase
+  const handleUpdatePassword = async (e) => {
+    e.preventDefault()
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
     
-    // Pass the secure headers to satisfy the RTO check on the backend
+    if (error) {
+      alert("Error updating password: " + error.message)
+    } else {
+      alert("Password updated successfully! You will now be redirected to your dashboard.")
+      setNewPassword('')
+      setIsRecoveringPassword(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!session || isRecoveringPassword) return;
     fetch(`${API_URL}/tas`, { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
-        // Safety check to ensure we only set an array
-        if (Array.isArray(data)) {
-          setExistingTasDocs(data);
-        } else {
-          setExistingTasDocs([]);
-        }
+        if (Array.isArray(data)) setExistingTasDocs(data);
+        else setExistingTasDocs([]);
       })
       .catch(err => console.error("Error loading TAS history:", err))
-  }, [activeTasId, session])
+  }, [activeTasId, session, isRecoveringPassword])
 
   useEffect(() => {
     if (productSearchQuery.trim().length < 2) return setProductSearchResults([])
@@ -115,14 +130,12 @@ function App() {
     return () => clearTimeout(timer)
   }, [productSearchQuery])
 
-  // Filtered Unit Search Hook
   useEffect(() => {
     if (searchQuery.trim().length < 2) return setSearchResults([])
     const timer = setTimeout(() => {
       fetch(`${API_URL}/units/search?query=${searchQuery}`)
         .then(res => res.json())
         .then(data => {
-          // Filter out nulls, empty strings, and literal "Title Unavailable" text
           const unitsWithTitles = data.filter(unit => 
             unit.unit_title && 
             unit.unit_title.trim() !== '' &&
@@ -135,6 +148,33 @@ function App() {
     }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
+
+  // INTERCEPT: Show Password Update Form if recovering
+  if (isRecoveringPassword) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#edf2f7' }}>
+        <div style={{ background: 'white', padding: '40px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px' }}>
+          <h2 style={{ textAlign: 'center', margin: '0 0 20px 0', color: '#2d3748' }}>Reset Your Password</h2>
+          <p style={{ textAlign: 'center', color: '#718096', fontSize: '0.9em', marginBottom: '25px' }}>Please enter your new password below.</p>
+          <form onSubmit={handleUpdatePassword}>
+            <label style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#4a5568', display: 'block' }}>New Password:</label>
+            <input 
+              type="password" 
+              placeholder="Minimum 6 characters"
+              value={newPassword} 
+              onChange={e => setNewPassword(e.target.value)} 
+              style={{ width: '100%', padding: '12px', margin: '8px 0 20px 0', borderRadius: '4px', border: '1px solid #cbd5e0', boxSizing: 'border-box' }} 
+              required 
+              minLength="6"
+            />
+            <button type="submit" style={{ width: '100%', padding: '12px', background: '#3182ce', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1em' }}>
+              Save New Password
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
 
   // IF NOT LOGGED IN, SHOW LOGIN SCREEN
   if (!session) {
@@ -221,26 +261,37 @@ function App() {
   }
 
   const fetchTasData = async (tasId) => {
-    fetch(`${API_URL}/tas/${tasId}/calculate`).then(res => res.json()).then(data => setCalculation(data));
-    fetch(`${API_URL}/tas/${tasId}/learner_profile`).then(res => res.json()).then(data => { if (data && Object.keys(data).length > 0) setLearnerProfile(data) });
-    fetch(`${API_URL}/tas/${tasId}/strategy_details`).then(res => res.json()).then(data => { if (data && Object.keys(data).length > 0) setStrategyDetails(data) });
+    fetch(`${API_URL}/tas/${tasId}/calculate`, { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => { if (!data.detail) setCalculation(data) });
+
+    fetch(`${API_URL}/tas/${tasId}/learner_profile`, { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => { if (data && !data.detail && Object.keys(data).length > 0) setLearnerProfile(data) });
+
+    fetch(`${API_URL}/tas/${tasId}/strategy_details`, { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => { if (data && !data.detail && Object.keys(data).length > 0) setStrategyDetails(data) });
 
     try {
       const [unitsRes, stratsRes] = await Promise.all([
-        fetch(`${API_URL}/tas/${tasId}/units`),
-        fetch(`${API_URL}/tas/${tasId}/cluster_strategies`)
+        fetch(`${API_URL}/tas/${tasId}/units`, { headers: getAuthHeaders() }),
+        fetch(`${API_URL}/tas/${tasId}/cluster_strategies`, { headers: getAuthHeaders() })
       ]);
       
       const unitsData = await unitsRes.json();
       const stratsData = await stratsRes.json();
 
-      if (unitsData && unitsData.length > 0) {
-        unitsData.sort((a, b) => {
+      const safeUnitsData = Array.isArray(unitsData) ? unitsData : [];
+      const safeStratsData = Array.isArray(stratsData) ? stratsData : [];
+
+      if (safeUnitsData.length > 0) {
+        safeUnitsData.sort((a, b) => {
           const cNameA = (!a.cluster_name || a.cluster_name === "Standalone") ? `Standalone: ${a.unit_code}` : a.cluster_name;
           const cNameB = (!b.cluster_name || b.cluster_name === "Standalone") ? `Standalone: ${b.unit_code}` : b.cluster_name;
           
-          const stratA = stratsData.find(s => s.cluster_name === cNameA);
-          const stratB = stratsData.find(s => s.cluster_name === cNameB);
+          const stratA = safeStratsData.find(s => s.cluster_name === cNameA);
+          const stratB = safeStratsData.find(s => s.cluster_name === cNameB);
           
           const seqA = stratA && stratA.sequence_order !== undefined ? stratA.sequence_order : 999;
           const seqB = stratB && stratB.sequence_order !== undefined ? stratB.sequence_order : 999;
@@ -249,7 +300,7 @@ function App() {
         });
       }
       
-      setTasUnits(unitsData || []);
+      setTasUnits(safeUnitsData);
     } catch (err) {
       console.error("Error fetching units and strategies:", err);
     }
@@ -320,8 +371,9 @@ function App() {
 
     let existingStrats = [];
     try {
-      const res = await fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`);
-      existingStrats = await res.json();
+      const res = await fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (Array.isArray(data)) existingStrats = data;
     } catch (e) {
       console.error("Could not fetch existing strategies for sequence update.");
     }
