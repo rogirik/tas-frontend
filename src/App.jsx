@@ -17,6 +17,9 @@ import IndustryEngagementTab from './components/tabs/IndustryEngagementTab.jsx'
 import PublicReviewForm from './components/PublicReviewForm.jsx'
 
 function App() {
+  // CRITICAL FIX: Ensure local frontend correctly points to either local or live backend.
+  // If you want local React to talk to live Render, just use the string directly:
+  // const API_URL = "https://tas-backend-7t7y.onrender.com";
   const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? "http://localhost:8000"
     : "https://tas-backend-7t7y.onrender.com"; 
