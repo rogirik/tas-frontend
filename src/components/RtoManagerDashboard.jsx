@@ -176,6 +176,7 @@ export default function RtoManagerDashboard({ API_URL, getAuthHeaders, onResumeT
             <input type="email" placeholder="Staff Email Address" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required style={{ flex: 2, padding: '10px', borderRadius: '6px', border: '1px solid #4b5563', background: '#111827', color: '#d1d5db' }} />
             <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #4b5563', background: '#111827', color: '#d1d5db' }}>
               <option value="auditor">Auditor (Read Only)</option>
+              <option value="teacher">Teacher (Read Only)</option>
               <option value="designer">Designer (Edit Access)</option>
               <option value="admin">Admin (Full Access)</option>
             </select>
@@ -202,6 +203,7 @@ export default function RtoManagerDashboard({ API_URL, getAuthHeaders, onResumeT
                       onChange={e => handleRoleChange(user.id, e.target.value)}
                       style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #4b5563', background: '#111827', color: '#d1d5db' }}>
                       <option value="auditor">Auditor</option>
+                      <option value="teacher">Teacher</option>
                       <option value="designer">Designer</option>
                       <option value="admin">Admin</option>
                     </select>
