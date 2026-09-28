@@ -17,7 +17,6 @@ import IndustryEngagementTab from './components/tabs/IndustryEngagementTab.jsx'
 import PublicReviewForm from './components/PublicReviewForm.jsx'
 
 function App() {
-  // Automatically switches between your local backend and live Render backend
   const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? "http://localhost:8000"
     : "https://tas-backend-7t7y.onrender.com"; 
@@ -78,7 +77,6 @@ function App() {
       setSession(session)
     })
     
-    // Listen for auth events, specifically intercepting password recovery links
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (_event === 'PASSWORD_RECOVERY') {
         setIsRecoveringPassword(true)
@@ -95,7 +93,6 @@ function App() {
     }
   }
 
-  // Handle saving the newly typed password to Supabase
   const handleUpdatePassword = async (e) => {
     e.preventDefault()
     const { error } = await supabase.auth.updateUser({ password: newPassword })
@@ -109,7 +106,7 @@ function App() {
     }
   }
 
-  useEffect(() => {
+  const loadExistingTasDocs = () => {
     if (!session || isRecoveringPassword) return;
     fetch(`${API_URL}/tas`, { headers: getAuthHeaders() })
       .then(res => res.json())
@@ -118,7 +115,28 @@ function App() {
         else setExistingTasDocs([]);
       })
       .catch(err => console.error("Error loading TAS history:", err))
+  }
+
+  useEffect(() => {
+    loadExistingTasDocs();
   }, [activeTasId, session, isRecoveringPassword])
+
+  // Helper to re-fetch TAS list and immediately update active metadata (version/status sync)
+  const refreshTasState = async (tasId) => {
+    try {
+      const res = await fetch(`${API_URL}/tas`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setExistingTasDocs(data);
+        const currentDoc = data.find(d => d.id === tasId);
+        if (currentDoc) {
+          setActiveTasMeta({ name: currentDoc.tas_name || 'Standard Delivery', version: currentDoc.version || '1.0' });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to refresh TAS version state:", err);
+    }
+  }
 
   useEffect(() => {
     if (productSearchQuery.trim().length < 2) return setProductSearchResults([])
@@ -149,7 +167,6 @@ function App() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // INTERCEPT: Show Password Update Form if recovering
   if (isRecoveringPassword) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#edf2f7' }}>
@@ -176,7 +193,6 @@ function App() {
     )
   }
 
-  // IF NOT LOGGED IN, SHOW LOGIN SCREEN
   if (!session) {
     return <Login />
   }
@@ -320,6 +336,7 @@ function App() {
       setTasUnits(prev => [...prev, { unit_code: selectedUnitCode, supervised_hours: parseFloat(supervisedHours) || 0, unsupervised_hours: parseFloat(unsupervisedHours) || 0, cluster_name: finalClusterName }])
       setSelectedUnitCode(''); setSearchQuery(''); setSupervisedHours(''); setUnsupervisedHours('')
       fetchTasData(activeTasId)
+      refreshTasState(activeTasId) // Check for version bump
     }).catch(() => setMessage("Failed to add unit. Unauthorized."))
   }
 
@@ -345,6 +362,7 @@ function App() {
       })
       
       fetchTasData(activeTasId)
+      refreshTasState(activeTasId) // Check for version bump
     })
     .catch(err => {
       console.error(err)
@@ -399,16 +417,27 @@ function App() {
     }
 
     fetchTasData(activeTasId);
+    refreshTasState(activeTasId); // Check for version bump
   };
 
   const handleSaveProfile = (e) => {
     e.preventDefault()
-    fetch(`${API_URL}/tas/${activeTasId}/learner_profile`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(learnerProfile) }).then(() => setMessage("Learner Profile saved successfully!")).catch(() => setMessage("Failed to save. Unauthorized."))
+    fetch(`${API_URL}/tas/${activeTasId}/learner_profile`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(learnerProfile) })
+    .then(() => {
+      setMessage("Learner Profile saved successfully!");
+      refreshTasState(activeTasId); // Check for version bump
+    })
+    .catch(() => setMessage("Failed to save. Unauthorized."))
   }
   
   const handleSaveDetails = (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    fetch(`${API_URL}/tas/${activeTasId}/strategy_details`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(strategyDetails) }).then(() => setMessage("Strategy Details saved successfully!")).catch(() => setMessage("Failed to save. Unauthorized."))
+    fetch(`${API_URL}/tas/${activeTasId}/strategy_details`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(strategyDetails) })
+    .then(() => {
+      setMessage("Strategy Details saved successfully!");
+      refreshTasState(activeTasId); // Check for version bump
+    })
+    .catch(() => setMessage("Failed to save. Unauthorized."))
   }
 
   const inputStyle = { width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1em', boxSizing: 'border-box' }
@@ -417,7 +446,6 @@ function App() {
   return (
     <div style={{ padding: '30px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', maxWidth: '1100px', margin: '0 auto', color: '#2c3e50', position: 'relative' }}>
       
-      {/* Sign Out Button */}
       <button 
         onClick={() => supabase.auth.signOut()} 
         style={{ position: 'absolute', top: '15px', right: '30px', background: 'transparent', border: 'none', color: '#718096', cursor: 'pointer', textDecoration: 'underline' }}>
@@ -429,7 +457,6 @@ function App() {
 
       {!activeTasId ? (
         <div>
-          {/* View Switcher Tabs */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '2px solid #edf2f7', paddingBottom: '15px' }}>
             <button onClick={() => setHomeViewMode('wizard')} style={{ background: homeViewMode === 'wizard' ? '#3182ce' : '#edf2f7', color: homeViewMode === 'wizard' ? 'white' : '#4a5568', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
               🛠️ Create & Resume Strategy
@@ -460,21 +487,12 @@ function App() {
                   </div>
                   <div style={{ marginBottom: '20px' }}>
                     <label style={labelStyle}>Qualification Title:</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Certificate IV in Training and Assessment" 
-                      value={selectedProductTitle} 
-                      onChange={(e) => setSelectedProductTitle(e.target.value)} 
-                      required 
-                      style={{ ...inputStyle, background: 'white', color: '#2c3e50' }} 
-                    />
+                    <input type="text" placeholder="e.g. Certificate IV in Training and Assessment" value={selectedProductTitle} onChange={(e) => setSelectedProductTitle(e.target.value)} required style={{ ...inputStyle, background: 'white', color: '#2c3e50' }} />
                   </div>
-
                   <div style={{ marginBottom: '20px' }}>
                     <label style={labelStyle}>Strategy Target / Cohort Name:</label>
                     <input type="text" placeholder="e.g. Corporate Delivery, Online Paced..." value={tasNameInput} onChange={(e) => setTasNameInput(e.target.value)} required style={inputStyle} />
                   </div>
-
                   <button type="submit" disabled={!selectedProductCode || !selectedProductTitle} style={{ background: selectedProductCode && selectedProductTitle ? '#3182ce' : '#cbd5e0', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px', cursor: selectedProductCode && selectedProductTitle ? 'pointer' : 'not-allowed', fontWeight: '600', width: '100%' }}>Create Blueprint →</button>
                 </form>
               </div>
@@ -495,13 +513,7 @@ function App() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                         <span style={{ fontSize: '1.2em', color: '#a0aec0' }}>➔</span>
-                        <button 
-                          onClick={(e) => handleDeleteTas(e, doc.id)}
-                          style={{ background: '#fc8181', color: 'white', border: 'none', padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1em' }}
-                          title="Delete this TAS"
-                        >
-                          🗑️
-                        </button>
+                        <button onClick={(e) => handleDeleteTas(e, doc.id)} style={{ background: '#fc8181', color: 'white', border: 'none', padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1em' }} title="Delete this TAS">🗑️</button>
                       </div>
                     </div>
                   ))}

@@ -6,9 +6,9 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rtoName, setRtoName] = useState('')
-  const [joinRtoId, setJoinRtoId] = useState('')
+  const [isCreatingOrg, setIsCreatingOrg] = useState(false)
   const [message, setMessage] = useState('')
-  const [mode, setMode] = useState('login') // 'login', 'create_org', 'join_org', 'reset_password'
+  const [mode, setMode] = useState('login') // 'login', 'signup', 'reset_password'
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -20,52 +20,23 @@ export default function Login() {
     setLoading(false)
   }
 
-  const handleCreateOrg = async (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault()
     setLoading(true)
     setMessage('')
     
-    if (!rtoName) {
+    if (isCreatingOrg && !rtoName) {
       setMessage("Please enter an Organization Name.")
       setLoading(false)
       return
     }
 
+    // Supabase trigger will automatically assign the user if their email is invited
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { 
-          rto_name: rtoName,
-          role: 'admin' 
-        }
-      }
-    })
-
-    if (error) setMessage(error.message)
-    else setMessage('Success! Check your email for a confirmation link.')
-    setLoading(false)
-  }
-
-  const handleJoinOrg = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setMessage('')
-    
-    if (!joinRtoId) {
-      setMessage("Please enter the RTO Invitation ID provided by your manager.")
-      setLoading(false)
-      return
-    }
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { 
-          rto_id: joinRtoId,
-          role: 'auditor' 
-        }
+        data: isCreatingOrg ? { rto_name: rtoName } : {}
       }
     })
 
@@ -105,30 +76,30 @@ export default function Login() {
         
         <div style={{ display: 'flex', marginBottom: '20px' }}>
           <button style={tabStyle(mode === 'login' || mode === 'reset_password')} onClick={() => { setMode('login'); setMessage(''); }}>Log In</button>
-          <button style={tabStyle(mode === 'create_org')} onClick={() => { setMode('create_org'); setMessage(''); }}>New RTO</button>
-          <button style={tabStyle(mode === 'join_org')} onClick={() => { setMode('join_org'); setMessage(''); }}>Join RTO</button>
+          <button style={tabStyle(mode === 'signup')} onClick={() => { setMode('signup'); setMessage(''); }}>Sign Up</button>
         </div>
 
         {message && <div style={{ padding: '10px', background: '#fed7d7', color: '#c53030', borderRadius: '4px', marginBottom: '15px', fontSize: '0.9em', textAlign: 'center' }}>{message}</div>}
         
         <form onSubmit={
           mode === 'login' ? handleLogin : 
-          mode === 'create_org' ? handleCreateOrg : 
-          mode === 'join_org' ? handleJoinOrg : 
+          mode === 'signup' ? handleSignUp : 
           handlePasswordReset
         }>
           
-          {mode === 'create_org' && (
-            <div>
-              <label style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#4a5568' }}>Organization / RTO Name:</label>
-              <input type="text" placeholder="e.g. Acme Training Academy" value={rtoName} onChange={e => setRtoName(e.target.value)} style={inputStyle} required />
-            </div>
-          )}
-
-          {mode === 'join_org' && (
-            <div>
-              <label style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#4a5568' }}>Manager's RTO Invitation Code:</label>
-              <input type="text" placeholder="Paste UUID here..." value={joinRtoId} onChange={e => setJoinRtoId(e.target.value)} style={inputStyle} required />
+          {mode === 'signup' && (
+            <div style={{ background: '#f7fafc', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '15px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9em', color: '#4a5568', cursor: 'pointer' }}>
+                <input type="checkbox" checked={isCreatingOrg} onChange={(e) => setIsCreatingOrg(e.target.checked)} />
+                I am registering a new Organization
+              </label>
+              
+              {isCreatingOrg && (
+                <div style={{ marginTop: '10px' }}>
+                  <label style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#4a5568' }}>Organization Name:</label>
+                  <input type="text" placeholder="e.g. Acme Training Academy" value={rtoName} onChange={e => setRtoName(e.target.value)} style={inputStyle} required />
+                </div>
+              )}
             </div>
           )}
 
@@ -145,8 +116,7 @@ export default function Login() {
           <button type="submit" disabled={loading} style={buttonStyle}>
             {loading ? 'Processing...' : 
              mode === 'login' ? 'Log In' : 
-             mode === 'create_org' ? 'Register New RTO' : 
-             mode === 'join_org' ? 'Join Existing RTO' : 
+             mode === 'signup' ? 'Create Account' : 
              'Send Reset Link'}
           </button>
         </form>

@@ -1,138 +1,228 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react';
 
 export default function RtoManagerDashboard({ API_URL, getAuthHeaders, onResumeTas }) {
-  const [documents, setDocuments] = useState([])
-  const [filterTab, setFilterTab] = useState('all') 
-  const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState('')
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [orgDetails, setOrgDetails] = useState(null);
+  
+  // Team Management State
+  const [staff, setStaff] = useState({ active: [], pending: [] });
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('auditor');
+  const [staffMessage, setStaffMessage] = useState('');
 
   const fetchAllDocs = () => {
-    setLoading(true)
-    setErrorMsg('')
-    
+    setLoading(true);
     fetch(`${API_URL}/tas`, { headers: getAuthHeaders() })
-      .then(res => {
-        if (!res.ok) throw new Error(`Server returned status ${res.status}`)
-        return res.json()
-      })
+      .then(res => res.json())
       .then(data => {
-        setDocuments(data || [])
-        setLoading(false)
+        setDocs(Array.isArray(data) ? data : []);
+        setLoading(false);
       })
       .catch(err => {
-        console.error("Error loading dashboard data:", err)
-        setErrorMsg("Failed to load strategies from server. Check your backend connection or authentication token.")
-        setLoading(false)
-      })
-  }
+        console.error("Error loading dashboard data:", err);
+        setMessage("Failed to load documents.");
+        setLoading(false);
+      });
+  };
+
+  const fetchStaff = () => {
+    fetch(`${API_URL}/organization/staff`, { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => { if (data.active) setStaff(data); })
+      .catch(err => console.error("Could not load staff", err));
+  };
 
   useEffect(() => {
-    fetchAllDocs()
-  }, [])
+    fetchAllDocs();
+    
+    fetch(`${API_URL}/organization/me`, { headers: getAuthHeaders() })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to fetch org details");
+        return res.json();
+      })
+      .then(data => {
+        setOrgDetails(data);
+        if (data.user_role === 'admin') fetchStaff();
+      })
+      .catch(err => console.error("Error with org details:", err));
+  }, []);
 
-  const handleStatusChange = (tasId, newStatus) => {
+  const handleUpdateStatus = (tasId, newStatus) => {
     fetch(`${API_URL}/tas/${tasId}/status`, {
-      method: 'PATCH',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ status: newStatus })
+      method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ status: newStatus })
     })
     .then(res => {
-      if (!res.ok) throw new Error("Failed to update status")
-      fetchAllDocs() 
+      if (!res.ok) throw new Error("Failed to update status");
+      fetchAllDocs();
     })
-    .catch(err => {
-      console.error(err)
-      alert("Error updating status. Ensure your user role has proper permissions.")
+    .catch(err => setMessage("Error: Only Admins or Designers can modify status."));
+  };
+
+  const handleInviteStaff = (e) => {
+    e.preventDefault();
+    setStaffMessage("Sending invite...");
+    fetch(`${API_URL}/organization/staff`, {
+      method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ email: inviteEmail, role: inviteRole })
     })
-  }
+    .then(res => res.json())
+    .then(data => {
+      setStaffMessage(data.message || data.detail || "Success!");
+      setInviteEmail('');
+      fetchStaff();
+    });
+  };
 
-  const filteredDocs = documents.filter(doc => {
-    if (filterTab === 'Draft') return doc.status === 'Draft' || !doc.status;
-    if (filterTab === 'Published') return doc.status === 'Published';
-    return true;
-  });
+  const handleRoleChange = (userId, newRole) => {
+    fetch(`${API_URL}/organization/staff/${userId}`, {
+      method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ role: newRole })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.detail) alert(data.detail);
+      fetchStaff();
+    });
+  };
 
-  const draftCount = documents.filter(d => d.status === 'Draft' || !d.status).length;
-  const publishedCount = documents.filter(d => d.status === 'Published').length;
+  const handleCancelInvite = (email) => {
+    fetch(`${API_URL}/organization/staff/invite?email=${encodeURIComponent(email)}`, {
+      method: 'DELETE', headers: getAuthHeaders()
+    }).then(() => fetchStaff());
+  };
 
-  if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#a0aec0', fontSize: '1.1em' }}>Loading RTO Dashboard...</div>
-
-  if (errorMsg) return (
-    <div style={{ padding: '30px', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '8px', color: '#c53030', textAlign: 'center' }}>
-      <h3>Connection Error</h3>
-      <p>{errorMsg}</p>
-      <button onClick={fetchAllDocs} style={{ background: '#e53e3e', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Retry</button>
-    </div>
-  )
-
-  const cardStyle = { background: '#1a202c', border: '1px solid #2d3748', borderRadius: '8px', padding: '20px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+  const totalStrats = docs.length;
+  const pendingDrafts = docs.filter(d => d.status === 'Draft' || !d.status).length;
+  const publishedDocs = docs.filter(d => d.status === 'Published').length;
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+    <div style={{ background: '#111827', padding: '30px', borderRadius: '10px', color: '#f3f4f6', minHeight: '600px' }}>
+      
+      {/* Dashboard Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
-          <h2 style={{ margin: '0 0 5px 0', color: '#e2e8f0' }}>RTO Manager Compliance Dashboard</h2>
-          <p style={{ margin: 0, color: '#a0aec0', fontSize: '0.9em' }}>Review, publish, and audit training and assessment strategies across the RTO.</p>
+          <h2 style={{ margin: '0 0 5px 0', color: '#f9fafb', fontSize: '1.8em' }}>RTO Manager Compliance Dashboard</h2>
+          <p style={{ margin: 0, color: '#9ca3af' }}>Review, publish, and audit training and assessment strategies across the RTO.</p>
         </div>
-        <button onClick={fetchAllDocs} style={{ background: '#2d3748', border: '1px solid #4a5568', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', color: '#e2e8f0' }}>🔄 Refresh</button>
+        <button onClick={fetchAllDocs} style={{ background: '#374151', color: '#e5e7eb', border: '1px solid #4b5563', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          🔄 Refresh
+        </button>
       </div>
 
-      {/* Metric Cards / Filter Tabs */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' }}>
-        <div onClick={() => setFilterTab('all')} style={{ background: filterTab === 'all' ? '#2a4365' : '#1a202c', border: `2px solid ${filterTab === 'all' ? '#3182ce' : '#2d3748'}`, padding: '20px', borderRadius: '8px', cursor: 'pointer' }}>
-          <div style={{ fontSize: '0.85em', color: '#a0aec0', fontWeight: 'bold' }}>TOTAL STRATEGIES</div>
-          <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: 'white', marginTop: '5px' }}>{documents.length}</div>
+      {message && <div style={{ marginBottom: '20px', padding: '12px', background: '#7f1d1d', color: '#fca5a5', borderRadius: '6px', border: '1px solid #991b1b' }}>{message}</div>}
+
+      {/* Metric Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
+        <div style={{ background: '#1e3a8a', border: '1px solid #2563eb', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#bfdbfe', letterSpacing: '1px', marginBottom: '10px' }}>TOTAL STRATEGIES</div>
+          <div style={{ fontSize: '3em', fontWeight: 'bold', color: 'white', lineHeight: '1' }}>{totalStrats}</div>
         </div>
-        <div onClick={() => setFilterTab('Draft')} style={{ background: filterTab === 'Draft' ? '#744210' : '#1a202c', border: `2px solid ${filterTab === 'Draft' ? '#d69e2e' : '#2d3748'}`, padding: '20px', borderRadius: '8px', cursor: 'pointer' }}>
-          <div style={{ fontSize: '0.85em', color: '#ecc94b', fontWeight: 'bold' }}>PENDING DRAFTS</div>
-          <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: 'white', marginTop: '5px' }}>{draftCount}</div>
+        <div style={{ background: '#1f2937', border: '1px solid #374151', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#fcd34d', letterSpacing: '1px', marginBottom: '10px' }}>PENDING DRAFTS</div>
+          <div style={{ fontSize: '3em', fontWeight: 'bold', color: 'white', lineHeight: '1' }}>{pendingDrafts}</div>
         </div>
-        <div onClick={() => setFilterTab('Published')} style={{ background: filterTab === 'Published' ? '#22543d' : '#1a202c', border: `2px solid ${filterTab === 'Published' ? '#38a169' : '#2d3748'}`, padding: '20px', borderRadius: '8px', cursor: 'pointer' }}>
-          <div style={{ fontSize: '0.85em', color: '#9ae6b4', fontWeight: 'bold' }}>READY FOR USE (PUBLISHED)</div>
-          <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: 'white', marginTop: '5px' }}>{publishedCount}</div>
+        <div style={{ background: '#1f2937', border: '1px solid #374151', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.85em', fontWeight: 'bold', color: '#86efac', letterSpacing: '1px', marginBottom: '10px' }}>READY FOR USE (PUBLISHED)</div>
+          <div style={{ fontSize: '3em', fontWeight: 'bold', color: 'white', lineHeight: '1' }}>{publishedDocs}</div>
         </div>
       </div>
 
-      {/* Document List */}
-      <div>
-        {filteredDocs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', background: '#1a202c', borderRadius: '8px', color: '#a0aec0', border: '1px solid #2d3748' }}>No strategies found for this filter view. Try creating one in the wizard!</div>
-        ) : (
-          filteredDocs.map(doc => {
-            const isPublished = doc.status === 'Published';
-            return (
-              <div key={doc.id} style={cardStyle}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <span style={{ background: isPublished ? '#22543d' : '#744210', color: isPublished ? '#9ae6b4' : '#ecc94b', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75em', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                      {doc.status || 'Draft'}
-                    </span>
-                    <span style={{ fontSize: '0.85em', color: '#a0aec0' }}>v{doc.version || '1.0'}</span>
-                  </div>
-                  <strong style={{ fontSize: '1.15em', color: 'white', display: 'block' }}>{doc.product_id} — {doc.tas_name || 'Standard Delivery'}</strong>
-                  <span style={{ fontSize: '0.85em', color: '#a0aec0' }}>Delivery Mode: {doc.delivery_mode || 'Not specified'}</span>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <button onClick={() => onResumeTas(doc)} style={{ background: '#2d3748', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', color: '#e2e8f0' }}>
-                    ✏️ Edit Blueprint
-                  </button>
-                  
-                  {isPublished ? (
-                    <button onClick={() => handleStatusChange(doc.id, 'Draft')} style={{ background: '#744210', border: '1px solid #d69e2e', color: '#feebc8', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
-                      ↩ Revert to Draft
-                    </button>
-                  ) : (
-                    <button onClick={() => handleStatusChange(doc.id, 'Published')} style={{ background: '#276749', border: 'none', color: 'white', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
-                      🚀 Publish Strategy
-                    </button>
-                  )}
-                </div>
+      {/* TAS List */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {loading ? <p style={{ color: '#9ca3af' }}>Loading documents...</p> : docs.map(doc => (
+          <div key={doc.id} style={{ background: '#1f2937', border: '1px solid #374151', padding: '20px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                <span style={{ background: doc.status === 'Published' ? '#065f46' : '#92400e', color: doc.status === 'Published' ? '#a7f3d0' : '#fde68a', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75em', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                  {(doc.status || 'DRAFT').toUpperCase()}
+                </span>
+                <span style={{ color: '#9ca3af', fontSize: '0.9em' }}>v{doc.version || '1.0'}</span>
               </div>
-            )
-          })
+              <div style={{ fontSize: '1.4em', fontWeight: 'bold', color: '#f3f4f6', marginBottom: '4px' }}>
+                {doc.product_id} — {doc.tas_name || 'Standard Delivery'}
+              </div>
+              <div style={{ color: '#9ca3af', fontSize: '0.95em' }}>
+                Delivery Mode: {doc.delivery_mode || 'To be determined'}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '15px' }}>
+              <button onClick={() => onResumeTas(doc)} style={{ background: '#374151', color: '#f3f4f6', border: '1px solid #4b5563', padding: '10px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ✏️ Edit Blueprint
+              </button>
+              {doc.status !== 'Published' && (
+                <button onClick={() => handleUpdateStatus(doc.id, 'Published')} style={{ background: '#059669', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🚀 Publish Strategy
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {!loading && docs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280', background: '#1f2937', borderRadius: '8px', border: '1px dashed #374151' }}>
+            No strategies found. Go to the Create tab to build your first TAS.
+          </div>
         )}
       </div>
+
+      {/* Admin Team Management Section */}
+      {orgDetails && orgDetails.user_role === 'admin' && (
+        <div style={{ background: '#1f2937', border: '1px solid #374151', padding: '20px', borderRadius: '8px', marginTop: '40px' }}>
+          <h3 style={{ margin: '0 0 10px 0', color: '#60a5fa' }}>🏢 {orgDetails.rto_name} - Staff & Access Management</h3>
+          <p style={{ margin: '0 0 20px 0', fontSize: '0.9em', color: '#9ca3af' }}>
+            Add staff emails below. Once added, tell them to sign up with that email—the system will automatically grant them access.
+          </p>
+          
+          <form onSubmit={handleInviteStaff} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <input type="email" placeholder="Staff Email Address" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required style={{ flex: 2, padding: '10px', borderRadius: '6px', border: '1px solid #4b5563', background: '#111827', color: '#d1d5db' }} />
+            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #4b5563', background: '#111827', color: '#d1d5db' }}>
+              <option value="auditor">Auditor (Read Only)</option>
+              <option value="designer">Designer (Edit Access)</option>
+              <option value="admin">Admin (Full Access)</option>
+            </select>
+            <button type="submit" style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '0 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Authorize Email</button>
+          </form>
+          {staffMessage && <div style={{ fontSize: '0.85em', color: '#60a5fa', marginBottom: '15px' }}>{staffMessage}</div>}
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
+            <thead>
+              <tr style={{ background: '#111827', textAlign: 'left', borderBottom: '1px solid #374151' }}>
+                <th style={{ padding: '10px', color: '#9ca3af' }}>Email / User</th>
+                <th style={{ padding: '10px', color: '#9ca3af' }}>Status</th>
+                <th style={{ padding: '10px', color: '#9ca3af' }}>Access Level</th>
+              </tr>
+            </thead>
+            <tbody>
+              {staff.active.map(user => (
+                <tr key={user.id} style={{ borderBottom: '1px solid #374151' }}>
+                  <td style={{ padding: '10px', color: '#e5e7eb', fontWeight: 'bold' }}>{user.email}</td>
+                  <td style={{ padding: '10px', color: '#34d399' }}>Active</td>
+                  <td style={{ padding: '10px' }}>
+                    <select 
+                      value={user.role} 
+                      onChange={e => handleRoleChange(user.id, e.target.value)}
+                      style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #4b5563', background: '#111827', color: '#d1d5db' }}>
+                      <option value="auditor">Auditor</option>
+                      <option value="designer">Designer</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+              {staff.pending.map(invite => (
+                <tr key={invite.email} style={{ borderBottom: '1px solid #374151', opacity: 0.7 }}>
+                  <td style={{ padding: '10px', color: '#e5e7eb' }}>{invite.email}</td>
+                  <td style={{ padding: '10px', color: '#fcd34d' }}>Pending Signup</td>
+                  <td style={{ padding: '10px' }}>
+                    <span style={{ display: 'inline-block', marginRight: '15px', color: '#9ca3af' }}>{invite.role}</span>
+                    <button onClick={() => handleCancelInvite(invite.email)} style={{ background: 'transparent', border: '1px solid #7f1d1d', color: '#fca5a5', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>Cancel</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
     </div>
-  )
+  );
 }
