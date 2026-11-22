@@ -30,7 +30,7 @@ export default function ResourcesTab({ activeTasId, strategyDetails, setStrategy
         <div>
           <strong style={{ display: 'block', marginBottom: '10px', color: '#2d3748' }}>Primary Evaluation Purposes:</strong>
           {["Enable ongoing improvements and adjustments", "Identify factors for program expansion", "Assess program merits against claims", "Identify emerging needs, gaps, or priorities", "Provide accountability"].map(purpose => (
-            <label key={purpose} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px', marginTop: '3px' }} checked={evalData.purposes.includes(purpose)} onChange={() => toggleArrayItem('purposes', purpose)} />{purpose}</label>
+            <label key={purpose} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px', marginTop: '3px' }} checked={evalData.purposes?.includes(purpose)} onChange={() => toggleArrayItem('purposes', purpose)} />{purpose}</label>
           ))}
         </div>
         <div>
@@ -47,9 +47,9 @@ export default function ResourcesTab({ activeTasId, strategyDetails, setStrategy
 
       <h4 style={headerStyle}>3. Data Collection & Methodology</h4>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-        <div><strong style={{ display: 'block', marginBottom: '10px', color: '#2d3748' }}>Evaluation Phases:</strong>{["Post-commencement", "Monitoring", "Impact"].map(phase => (<label key={phase} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px' }} checked={evalData.phases.includes(phase)} onChange={() => toggleArrayItem('phases', phase)} />{phase}</label>))}</div>
-        <div><strong style={{ display: 'block', marginBottom: '10px', color: '#2d3748' }}>Data Sources:</strong>{["Student Feedback", "Teacher Feedback", "Observations", "External Assessments", "Internal Assessments", "Administrative Data", "Document Analysis"].map(source => (<label key={source} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px' }} checked={evalData.data_sources.includes(source)} onChange={() => toggleArrayItem('data_sources', source)} />{source}</label>))}</div>
-        <div><strong style={{ display: 'block', marginBottom: '10px', color: '#2d3748' }}>Methodologies:</strong>{["Surveys", "Semi-structured Interviews", "Desktop Research", "Literature Review", "Case Studies", "Focus Groups"].map(method => (<label key={method} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px' }} checked={evalData.methodology.includes(method)} onChange={() => toggleArrayItem('methodology', method)} />{method}</label>))}</div>
+        <div><strong style={{ display: 'block', marginBottom: '10px', color: '#2d3748' }}>Evaluation Phases:</strong>{["Post-commencement", "Monitoring", "Impact"].map(phase => (<label key={phase} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px' }} checked={evalData.phases?.includes(phase)} onChange={() => toggleArrayItem('phases', phase)} />{phase}</label>))}</div>
+        <div><strong style={{ display: 'block', marginBottom: '10px', color: '#2d3748' }}>Data Sources:</strong>{["Student Feedback", "Teacher Feedback", "Observations", "External Assessments", "Internal Assessments", "Administrative Data", "Document Analysis"].map(source => (<label key={source} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px' }} checked={evalData.data_sources?.includes(source)} onChange={() => toggleArrayItem('data_sources', source)} />{source}</label>))}</div>
+        <div><strong style={{ display: 'block', marginBottom: '10px', color: '#2d3748' }}>Methodologies:</strong>{["Surveys", "Semi-structured Interviews", "Desktop Research", "Literature Review", "Case Studies", "Focus Groups"].map(method => (<label key={method} style={labelStyle}><input type="checkbox" style={{ marginRight: '10px' }} checked={evalData.methodology?.includes(method)} onChange={() => toggleArrayItem('methodology', method)} />{method}</label>))}</div>
       </div>
 
       <h4 style={headerStyle}>4. Implementation & Risk Management</h4>

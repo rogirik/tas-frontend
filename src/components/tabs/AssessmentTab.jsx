@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from "react";
 import LinkedIndustryFeedback from '../LinkedIndustryFeedback.jsx';
 
-export default function AssessmentTab({ activeTasId, strategyDetails }) {
-  const API_URL = "http://localhost:8000"; 
-  
+export default function AssessmentTab({ activeTasId, strategyDetails, API_URL, getAuthHeaders }) {
   // State for data
   const [clusterGroups, setClusterGroups] = useState({});
   const [strategies, setStrategies] = useState({});
@@ -24,31 +22,44 @@ export default function AssessmentTab({ activeTasId, strategyDetails }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch units and group them (standalone units get individual keys so they aren't bunched)
-      const unitsRes = await fetch(`${API_URL}/tas/${activeTasId}/units`);
+      // 1. Fetch units and group them
+      const unitsRes = await fetch(`${API_URL}/tas/${activeTasId}/units`, {
+        headers: getAuthHeaders()
+      });
       const unitsData = await unitsRes.json();
       
       const groups = {};
-      unitsData.forEach(u => {
-        const cName = (!u.cluster_name || u.cluster_name === "Standalone") 
-          ? `Standalone: ${u.unit_code}` 
-          : u.cluster_name;
+      
+      // Safely verify the response is an array before looping
+      if (Array.isArray(unitsData)) {
+        unitsData.forEach(u => {
+          const cName = (!u.cluster_name || u.cluster_name === "Standalone") 
+            ? `Standalone: ${u.unit_code}` 
+            : u.cluster_name;
 
-        if (!groups[cName]) groups[cName] = [];
-        // Ensure unit codes don't duplicate within the group array
-        if (!groups[cName].includes(u.unit_code)) {
-          groups[cName].push(u.unit_code);
-        }
-      });
+          if (!groups[cName]) groups[cName] = [];
+          if (!groups[cName].includes(u.unit_code)) {
+            groups[cName].push(u.unit_code);
+          }
+        });
+      } else {
+        console.error("Backend returned an error instead of units array:", unitsData);
+      }
+      
       setClusterGroups(groups);
 
       // 2. Fetch existing strategies
-      const stratRes = await fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`);
+      const stratRes = await fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`, {
+        headers: getAuthHeaders()
+      });
       const stratData = await stratRes.json();
 
       const stratMap = {};
+      // Fallback to an empty array if the strategies fetch fails
+      const safeStratData = Array.isArray(stratData) ? stratData : [];
+
       Object.keys(groups).forEach(cluster => {
-        const existing = stratData.find(s => s.cluster_name === cluster);
+        const existing = safeStratData.find(s => s.cluster_name === cluster);
         stratMap[cluster] = {
           delivery_methods: existing ? existing.delivery_methods.join(", ") : "",
           assessment_methods: existing ? existing.assessment_methods.join(", ") : "",
@@ -90,7 +101,7 @@ export default function AssessmentTab({ activeTasId, strategyDetails }) {
     try {
       const response = await fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       

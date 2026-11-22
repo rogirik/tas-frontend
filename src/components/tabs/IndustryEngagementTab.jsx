@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export default function IndustryEngagementTab({ activeTasId, tasUnits, strategyDetails, setStrategyDetails, handleSaveDetails }) {
+  const [partnerEmailInput, setPartnerEmailInput] = useState('');
+
   if (!activeTasId) return <div style={{ padding: '20px' }}>No TAS ID provided. Please open a TAS first.</div>;
 
   const engagements = strategyDetails.industry_engagements || [];
@@ -33,10 +35,22 @@ export default function IndustryEngagementTab({ activeTasId, tasUnits, strategyD
     updateEngagement(engagementIndex, 'linked_items', newLinks);
   };
 
+  // FORCE LIVE URL: Ensures emails generated on localhost still point to the live Vercel app
+  const FRONTEND_URL = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1')
+    ? "https://tas-frontend-three.vercel.app" 
+    : window.location.origin;
+
+  const publicReviewLink = `${FRONTEND_URL}/?review=${activeTasId}${partnerEmailInput ? `&email=${encodeURIComponent(partnerEmailInput)}` : ''}`;
+  
+  // Basic Mailto Fallback (Plain Text Only)
+  const mailtoLink = `mailto:${partnerEmailInput}?subject=${encodeURIComponent("Industry Consultation Request - TAS Review")}&body=${encodeURIComponent(`Hello,\n\nWe are currently reviewing our Training and Assessment Strategy (TAS) and would highly value your industry feedback.\n\nPlease click the secure link below to review the proposed strategy and answer a few quick questions:\n\n${publicReviewLink}\n\nThank you for your time and expertise.`)}`;
+
   const inputStyle = { width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1em', boxSizing: 'border-box', marginTop: '6px', fontFamily: 'inherit' };
 
   return (
     <div style={{ background: 'white', padding: '30px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+      
+      {/* HEADER SECTION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #edf2f7', paddingBottom: '15px', marginBottom: '25px' }}>
         <div>
           <h2 style={{ marginTop: 0, color: '#1a365d', marginBottom: '5px' }}>Industry Engagement Matrix</h2>
@@ -44,7 +58,6 @@ export default function IndustryEngagementTab({ activeTasId, tasUnits, strategyD
         </div>
         <button 
           onClick={() => {
-            // Manual Add Stub for testing/offline entry
             const newPartner = { partner_name: 'New Partner', partner_email: '', status: 'Draft', answers: {}, linked_items: [], action_taken: '' };
             setStrategyDetails(prev => ({ ...prev, industry_engagements: [...engagements, newPartner] }));
           }}
@@ -54,9 +67,39 @@ export default function IndustryEngagementTab({ activeTasId, tasUnits, strategyD
         </button>
       </div>
 
+      {/* SHARE LINK WIDGET */}
+      <div style={{ background: '#ebf8ff', border: '1px solid #90cdf4', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
+        <h4 style={{ margin: '0 0 10px 0', color: '#2b6cb0' }}>Share Public Review Link</h4>
+        <p style={{ fontSize: '0.85em', color: '#4a5568', margin: '0 0 15px 0' }}>
+          Enter your partner's email below to generate a unique link. You can draft a basic email or copy the link directly.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input 
+            type="email" 
+            placeholder="partner@industry.com"
+            value={partnerEmailInput}
+            onChange={(e) => setPartnerEmailInput(e.target.value)}
+            style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', flex: 1, minWidth: '200px', outline: 'none' }}
+          />
+          <a 
+            href={mailtoLink}
+            style={{ background: '#3182ce', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'none' }}
+          >
+            Draft Email →
+          </a>
+          <button 
+            onClick={() => { navigator.clipboard.writeText(publicReviewLink); alert('Raw link copied to clipboard!'); }}
+            style={{ background: 'transparent', color: '#718096', border: 'none', padding: '10px', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            Copy Link
+          </button>
+        </div>
+      </div>
+
+      {/* ENGAGEMENT LIST */}
       {engagements.length === 0 ? (
         <div style={{ padding: '30px', textAlign: 'center', background: '#f7fafc', borderRadius: '8px', border: '1px dashed #cbd5e0', color: '#718096' }}>
-          No industry feedback logged yet. Use the public link to request feedback.
+          No industry feedback logged yet. Use the public link above to request feedback.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>

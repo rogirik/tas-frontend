@@ -166,7 +166,17 @@ export default function LearnerProfileTab({ activeTasId, learnerProfile, setLear
     setShowModal(true);
   }
 
-  const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', marginBottom: '15px', backgroundColor: 'white' }
+  // FIXED: Added color and explicit backgroundColor so dropdown text is visible
+  const inputStyle = { 
+    width: '100%', 
+    padding: '10px', 
+    borderRadius: '6px', 
+    border: '1px solid #cbd5e0', 
+    marginBottom: '15px', 
+    backgroundColor: '#ffffff', 
+    color: '#2d3748' 
+  }
+  
   const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '5px', color: '#4a5568' }
   
   return (
