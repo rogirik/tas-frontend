@@ -1,45 +1,99 @@
 import React, { useState, useEffect } from 'react';
 
-export default function WalkthroughReport({ activeTasId, activeTasMeta, selectedProductCode, selectedProductTitle, learnerProfile, strategyDetails, tasUnits, calculation }) {
-  const API_URL = "http://localhost:8000";
+export default function WalkthroughReport({
+  activeTasId,
+  activeTasMeta = {},
+  selectedProductCode,
+  selectedProductTitle,
+  learnerProfile = {},
+  strategyDetails = {},
+  tasUnits = [],
+  calculation,
+  API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8000'
+    : 'https://tas-backend-7t7y.onrender.com',
+  getAuthHeaders
+}) {
   const [clusterStrategies, setClusterStrategies] = useState([]);
   const [loadingStrategies, setLoadingStrategies] = useState(true);
 
   useEffect(() => {
     if (!activeTasId) return;
-    fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`)
+    setLoadingStrategies(true);
+
+    const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
+
+    fetch(`${API_URL}/tas/${activeTasId}/cluster_strategies`, { headers })
       .then(res => res.json())
       .then(data => {
-        setClusterStrategies(data || []);
+        if (Array.isArray(data)) {
+          const sorted = [...data].sort(
+            (a, b) => (a.sequence_order ?? 999) - (b.sequence_order ?? 999)
+          );
+          setClusterStrategies(sorted);
+        } else {
+          setClusterStrategies([]);
+        }
         setLoadingStrategies(false);
       })
       .catch(err => {
         console.error("Error fetching walkthrough strategies:", err);
+        setClusterStrategies([]);
         setLoadingStrategies(false);
       });
-  }, [activeTasId]);
+  }, [activeTasId, API_URL]);
 
   // Group tasUnits by their cluster_name for a clean breakdown
   const groupedUnits = {};
   (tasUnits || []).forEach(u => {
-    const cName = u.cluster_name || "Standalone";
+    const cName = (!u.cluster_name || u.cluster_name === "Standalone")
+      ? `Standalone: ${u.unit_code}`
+      : u.cluster_name;
     if (!groupedUnits[cName]) groupedUnits[cName] = [];
     groupedUnits[cName].push(u);
   });
 
-  const cardStyle = { background: 'white', padding: '25px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '25px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' };
-  const headingStyle = { color: '#1a365d', borderBottom: '2px solid #edf2f7', paddingBottom: '10px', marginTop: 0, marginBottom: '20px', fontSize: '1.2em' };
+  const cardStyle = {
+    background: 'white',
+    padding: '25px',
+    borderRadius: '10px',
+    border: '1px solid #e2e8f0',
+    marginBottom: '25px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+  };
+  const headingStyle = {
+    color: '#1a365d',
+    borderBottom: '2px solid #edf2f7',
+    paddingBottom: '10px',
+    marginTop: 0,
+    marginBottom: '20px',
+    fontSize: '1.2em'
+  };
   const labelStyle = { fontWeight: 'bold', color: '#4a5568', display: 'block', marginBottom: '5px' };
   const textStyle = { color: '#2d3748', whiteSpace: 'pre-wrap', lineHeight: '1.5', margin: 0 };
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', paddingBottom: '50px' }}>
-      
+
       {/* Report Banner */}
-      <div style={{ background: '#1a365d', color: 'white', padding: '30px', borderRadius: '10px', marginBottom: '30px' }}>
-        <span style={{ background: '#3182ce', padding: '4px 10px', borderRadius: '4px', fontSize: '0.8em', fontWeight: 'bold', textTransform: 'uppercase' }}>Trainer Walkthrough Blueprint</span>
-        <h1 style={{ margin: '10px 0 5px 0', fontSize: '1.8em' }}>{selectedProductCode} - {selectedProductTitle}</h1>
-        <p style={{ margin: 0, color: '#90cdf4', fontSize: '1.1em' }}>Cohort Strategy: {activeTasMeta.name} (v{activeTasMeta.version})</p>
+      <div style={{ background: '#1a365d', color: 'white', padding: '30px', borderRadius: '10px', marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
+        <div>
+          <span style={{ background: '#3182ce', padding: '4px 10px', borderRadius: '4px', fontSize: '0.8em', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            Trainer Walkthrough Blueprint
+          </span>
+          <h1 style={{ margin: '10px 0 5px 0', fontSize: '1.8em' }}>{selectedProductCode} — {selectedProductTitle}</h1>
+          <p style={{ margin: 0, color: '#90cdf4', fontSize: '1.05em' }}>
+            Cohort Strategy: {activeTasMeta.name || 'Standard Delivery'} (v{activeTasMeta.version || '1.0'})
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => window.print()}
+          style={{ background: 'white', color: '#1a365d', border: 'none', padding: '10px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9em' }}
+        >
+          🖨️ Print / Save PDF
+        </button>
       </div>
 
       {/* Compliance / Volume HUD */}
@@ -66,7 +120,7 @@ export default function WalkthroughReport({ activeTasId, activeTasMeta, selected
       <div style={cardStyle}>
         <h3 style={headingStyle}>📚 Attached Units & Clusters Matrix</h3>
         <p style={{ color: '#718096', fontSize: '0.9em', marginBottom: '20px' }}>
-          Overview of how units are structured and grouped for delivery in this qualification:
+          Overview of how units are structured and grouped for delivery in this strategy:
         </p>
 
         {Object.keys(groupedUnits).length === 0 ? (
